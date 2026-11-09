@@ -1,0 +1,36 @@
+{
+  "name": "nitpick",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Code review for mentors: paste, format, comment, share one short link.",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "NODE_ENV=production node server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "tokens": "node scripts/gen-tokens.ts",
+    "test": "node --test 'tests/*.test.ts'"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.5",
+    "hono": "4.13.14"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/prismjs": "1.26.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "@wasm-fmt/clang-format": "23.1.1",
+    "@wasm-fmt/gofmt": "0.7.3",
+    "@wasm-fmt/ruff_fmt": "0.15.20",
+    "prettier": "3.9.10",
+    "prismjs": "1.30.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}
