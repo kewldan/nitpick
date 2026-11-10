@@ -108,3 +108,7 @@ npm run typecheck && npm test && npm run build
 - Work and commit on `main`; no feature branches.
 - Conventional Commits: `feat(scope): …`, `fix: …`, `refactor: …`, `test: …`,
   `docs: …`, `chore: …`, `ci: …`. No AI attribution in commits, PRs or files.
+- Release: bump `version` in `package.json` (and `npm install
+  --package-lock-only`), add the section to `CHANGELOG.md`, commit
+  `chore(release): vX.Y.Z`, tag `vX.Y.Z`, push both, then
+  `gh release create vX.Y.Z` with that changelog section as the notes.
