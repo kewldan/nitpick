@@ -3,7 +3,8 @@ import { useMemo, useState, type KeyboardEvent } from 'react';
 import type { Comment, Reply } from '../../shared/types.ts';
 import { highlight } from '../lib/highlight.ts';
 import { useCopy } from '../lib/hooks.tsx';
-import { lineLabel } from '../lib/text.ts';
+import { t } from '../i18n/index.ts';
+import { lineLabel, SEVERITY } from '../lib/text.ts';
 import { Toks } from './CodeView.tsx';
 import { Prose, SeverityBadge } from './controls.tsx';
 import { Icon } from './Icon.tsx';
@@ -24,7 +25,7 @@ export function SuggestedChange({
       <div className="np-sug__head">
         <span className="sug-title">
           <Icon name="code" size={14} />
-          Suggested change
+          {t().card.suggestedChange}
         </span>
         {canCopy && (
           <button
@@ -33,7 +34,7 @@ export function SuggestedChange({
             onClick={() => copy(code, 'sug')}
           >
             <Icon name={copied ? 'check' : 'copy'} />
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? t().common.copied : t().common.copy}
           </button>
         )}
       </div>
@@ -85,9 +86,10 @@ export function CommentCard({
 }: CommentCardProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const m = t().card;
   const isPraise = c.severity === 'praise';
   const where = lineLabel(c.line, c.endLine);
-  const who = mode === 'mentor' ? 'You' : reviewer.trim() || 'Your mentor';
+  const who = mode === 'mentor' ? m.you : reviewer.trim() || m.yourMentor;
 
   const send = async () => {
     const text = draft.trim();
@@ -105,16 +107,16 @@ export function CommentCard({
   };
 
   const replyWho = (r: Reply) => {
-    if (mode === 'mentor') return r.author === 'mentor' ? 'You' : 'Mentee';
-    if (r.author === 'mentor') return reviewer.trim() || 'Mentor';
-    return isOwnReply?.(r) ? 'You' : 'Mentee';
+    if (mode === 'mentor') return r.author === 'mentor' ? m.you : m.mentee;
+    if (r.author === 'mentor') return reviewer.trim() || m.mentor;
+    return isOwnReply?.(r) ? m.you : m.mentee;
   };
 
   return (
     <article
       className={`np-card${flush ? ' np-card--flush' : ''}`}
       data-resolved={mode === 'mentee' && c.resolved ? 'true' : undefined}
-      aria-label={`${c.severity} comment on ${where}`}
+      aria-label={m.aria(SEVERITY[c.severity].label, where)}
     >
       <div className="np-card__head">
         <div className="np-card__who">
@@ -125,7 +127,7 @@ export function CommentCard({
           {mode === 'mentor' && c.resolved && (
             <span className="fixed-mark">
               <Icon name="check" size={12} />
-              Fixed by mentee
+              {m.fixedByMentee}
             </span>
           )}
         </div>
@@ -135,8 +137,8 @@ export function CommentCard({
               type="button"
               className="np-btn np-btn--icon"
               onClick={onEdit}
-              aria-label={`Edit the comment on ${where}`}
-              title="Edit"
+              aria-label={m.editAria(where)}
+              title={m.editTitle}
             >
               <Icon name="pencil" />
             </button>
@@ -144,8 +146,8 @@ export function CommentCard({
               type="button"
               className="np-btn np-btn--icon"
               onClick={onDelete}
-              aria-label={`Delete the comment on ${where}`}
-              title="Delete"
+              aria-label={m.deleteAria(where)}
+              title={m.deleteTitle}
             >
               <Icon name="trash" />
             </button>
@@ -160,7 +162,7 @@ export function CommentCard({
               onClick={onToggleResolved}
             >
               <Icon name="check" />
-              {c.resolved ? 'Fixed · undo' : 'Mark as fixed'}
+              {c.resolved ? m.fixedUndo : m.markFixed}
             </button>
           )
         )}
@@ -200,8 +202,8 @@ export function CommentCard({
             maxLength={2000}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={onKey}
-            aria-label={`Reply to the comment on ${where}`}
-            placeholder={mode === 'mentor' ? 'Reply to your mentee…' : 'Reply or ask a question…'}
+            aria-label={m.replyAria(where)}
+            placeholder={mode === 'mentor' ? m.replyMentor : m.replyMentee}
           />
           <button
             type="button"
@@ -209,7 +211,7 @@ export function CommentCard({
             disabled={!draft.trim() || sending}
             onClick={send}
           >
-            Reply
+            {m.reply}
           </button>
         </div>
       )}

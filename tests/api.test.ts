@@ -174,5 +174,26 @@ test('share pages get escaped titles and previews', async () => {
   );
   assert.match(html, /<title>A &#60;b&#62;\$&#38; title · Nitpick<\/title>/);
   assert.equal(html.match(/name="description"/g)?.length, 1);
-  assert.match(describeReview(review).text, /1 blocker/);
+  assert.match(describeReview(review).text, /1 блокер/);
+});
+
+test('errors follow the caller’s language', async () => {
+  const { store } = setup();
+  const app = createApp({ store });
+  const ask = (headers: Record<string, string>) =>
+    Promise.resolve(app.request('/api/reviews/ZZZZZZ', { headers })).then(
+      (r) => r.json() as Promise<{ error: string }>,
+    );
+  assert.equal((await ask({ 'x-lang': 'en' })).error, 'Review not found');
+  assert.equal((await ask({ 'x-lang': 'ru' })).error, 'Ревью не найдено');
+  assert.equal((await ask({ 'accept-language': 'en-US,en;q=0.9' })).error, 'Review not found');
+  assert.equal((await ask({})).error, 'Ревью не найдено');
+});
+
+test('link previews use the review’s language', async () => {
+  const { store, req } = setup();
+  const { id } = (await (await req('POST', '/api/reviews', input({ locale: 'en' }))).json()) as { id: string };
+  const html = renderPage('<html lang="ru"><head><title>x</title></head></html>', store.get(id)!);
+  assert.match(html, /<html lang="en"/);
+  assert.match(html, /Review of 2 files by Daniel · Changes requested · 2 comments · 1 blocker/);
 });

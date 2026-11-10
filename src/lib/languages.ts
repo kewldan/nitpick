@@ -1,3 +1,5 @@
+import { languageLabel } from '../i18n/index.ts';
+
 // The languages Nitpick knows: how to name, highlight and format each one.
 
 export type FormatterId = 'clang-format' | 'prettier' | 'gofmt' | 'ruff';
@@ -35,6 +37,11 @@ export const LANGUAGES: Language[] = [
 ];
 
 const BY_ID = new Map(LANGUAGES.map((l) => [l.id, l]));
+
+/** The language's display name in the current interface language. */
+export function languageName(id: string): string {
+  return languageLabel(id, language(id).label);
+}
 
 export function language(id: string): Language {
   return BY_ID.get(id) ?? BY_ID.get('text')!;

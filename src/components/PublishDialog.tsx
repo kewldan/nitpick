@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 
 import type { Draft } from '../lib/draft.ts';
 import { useCopy } from '../lib/hooks.tsx';
-import { expiryText, plural, VERDICT } from '../lib/text.ts';
+import { t } from '../i18n/index.ts';
+import { expiryText, verdict } from '../lib/text.ts';
 import { Icon } from './Icon.tsx';
 
 export function shareUrl(id: string) {
@@ -23,17 +24,8 @@ function LinkValue({ url, muted }: { url: string; muted?: boolean }) {
 }
 
 export function menteeMessage(d: Draft, url: string) {
-  const title = d.title.trim() || 'your code';
   const blockers = d.comments.filter((c) => c.severity === 'blocker').length;
-  const quoted = d.title.trim() ? `“${title}”` : title;
-  return (
-    `I reviewed ${quoted}: ${plural(d.comments.length, 'comment')}` +
-    (blockers ? `, ${plural(blockers, 'blocker')}` : '') +
-    '. ' +
-    (blockers ? 'Start with the blockers' : 'Go through them top to bottom') +
-    (d.allowResolve ? ' and tick things off as you fix them.' : '.') +
-    `\n${url}`
-  );
+  return t().dialog.message(d.title.trim(), d.comments.length, blockers, d.allowResolve, url);
 }
 
 export function PublishDialog({
@@ -73,11 +65,11 @@ export function PublishDialog({
     };
   }, [onClose]);
 
-  const title =
-    kind === 'published' ? 'Review published' : kind === 'updated' ? 'Link updated' : 'Share this review';
+  const m = t().dialog;
+  const title = kind === 'published' ? m.published : kind === 'updated' ? m.updated : m.share;
   const sub = [
-    plural(draft.comments.length, 'comment'),
-    VERDICT[draft.verdict].label,
+    t().plural.comments(draft.comments.length),
+    verdict(draft.verdict).label,
     expiryText(expiresAt),
   ].join(' · ');
 
@@ -99,18 +91,18 @@ export function PublishDialog({
             </h2>
             <p className="np-dialog__sub">{sub}</p>
           </div>
-          <button type="button" className="np-btn np-btn--icon" aria-label="Close" onClick={onClose}>
+          <button type="button" className="np-btn np-btn--icon" aria-label={m.close} onClick={onClose}>
             <Icon name="close" />
           </button>
         </div>
         <div className="np-dialog__body">
           {kind === 'updated' && (
             <p className="dialog-note">
-              Same link as before. Your mentee sees the changes when they reload the page.
+              {m.sameLink}
             </p>
           )}
           <div className="np-field">
-            <span className="np-label">Share link — send this to your mentee</span>
+            <span className="np-label">{m.shareLabel}</span>
             <div className="np-linkfield">
               <LinkValue url={share} />
               <button
@@ -120,14 +112,14 @@ export function PublishDialog({
                 onClick={() => copy(share, 'share')}
               >
                 <Icon name={copied === 'share' ? 'check' : 'copy'} />
-                {copied === 'share' ? 'Copied' : 'Copy link'}
+                {copied === 'share' ? t().common.copied : m.copyLink}
               </button>
             </div>
           </div>
           <div className="np-field">
             <span className="np-label label-icon">
               <Icon name="lock" size={13} />
-              Private edit link — keep it to yourself, it’s your only way back in
+              {m.editLabel}
             </span>
             <div className="np-linkfield np-linkfield--private">
               <LinkValue url={edit} muted />
@@ -136,19 +128,19 @@ export function PublishDialog({
                 className="np-btn np-btn--secondary np-btn--xl"
                 onClick={() => copy(edit, 'edit')}
               >
-                {copied === 'edit' ? 'Copied' : 'Copy'}
+                {copied === 'edit' ? t().common.copied : t().common.copy}
               </button>
             </div>
           </div>
           <div className="np-field">
             <div className="row-between">
-              <span className="np-label">Message to paste in Telegram</span>
+              <span className="np-label">{m.messageLabel}</span>
               <button
                 type="button"
                 className="np-btn np-btn--secondary np-btn--sm"
                 onClick={() => copy(message, 'msg')}
               >
-                {copied === 'msg' ? 'Copied' : 'Copy message'}
+                {copied === 'msg' ? t().common.copied : m.copyMessage}
               </button>
             </div>
             <div className="message-box">{message}</div>
@@ -156,10 +148,10 @@ export function PublishDialog({
         </div>
         <div className="np-dialog__foot">
           <button type="button" className="np-btn np-btn--secondary" onClick={onClose}>
-            Keep editing
+            {m.keepEditing}
           </button>
           <button type="button" className="np-btn np-btn--primary" onClick={onOpenMentee}>
-            Open mentee view
+            {m.openMentee}
             <Icon name="external" />
           </button>
         </div>

@@ -1,3 +1,4 @@
+import { t, useLocale } from './i18n/index.ts';
 import { useLocation } from './lib/hooks.tsx';
 import { ErrorPage } from './pages/ErrorPage.tsx';
 import { Mentor } from './pages/Mentor.tsx';
@@ -5,6 +6,8 @@ import { Shared } from './pages/Shared.tsx';
 
 export function App() {
   const loc = useLocation();
+  // Subscribing here re-renders the whole tree when the language changes.
+  useLocale();
   const path = loc.split('#')[0].replace(/\/+$/, '') || '/';
 
   let m: RegExpExecArray | null;
@@ -16,9 +19,9 @@ export function App() {
   if ((m = /^\/([A-Za-z0-9]{6,10})$/.exec(path))) return <Shared key={m[1]} id={m[1]} />;
   return (
     <ErrorPage
-      title="Page not found"
-      text="There’s nothing at this address."
-      action={{ label: 'Start a new review', href: '/' }}
+      title={t().notFound.title}
+      text={t().notFound.text}
+      action={{ label: t().mentor.startNew, href: '/' }}
     />
   );
 }

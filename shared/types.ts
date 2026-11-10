@@ -1,3 +1,5 @@
+import type { Locale } from './i18n.ts';
+
 // Types shared by the browser app and the API server.
 
 export const SEVERITIES = [
@@ -65,6 +67,8 @@ export interface ReviewFile {
 /** Everything the mentor controls; sent on publish and on update. */
 export interface ReviewInput {
   title: string;
+  /** The mentor's interface language; link previews use it. */
+  locale: Locale;
   files: ReviewFile[];
   summary: string;
   verdict: Verdict;
@@ -138,12 +142,13 @@ const LEGACY_EXT: Record<string, string> = {
 
 /** Upgrades a stored single-file review to the files layout. */
 export function normalizeReview(doc: Review & LegacyReview): Review {
-  if (Array.isArray(doc.files)) return doc;
+  if (Array.isArray(doc.files)) return doc.locale ? doc : { ...doc, locale: 'ru' };
   const language = doc.language ?? 'text';
   const path = doc.fileName || `main.${LEGACY_EXT[language] ?? 'txt'}`;
   const { fileName: _f, code, original, formatter, language: _l, ...rest } = doc;
   return {
     ...rest,
+    locale: rest.locale ?? 'ru',
     files: [{ path, language, code: code ?? '', original: original ?? '', formatter: formatter ?? '' }],
     comments: doc.comments.map((c) => ({ ...c, file: c.file ?? path })),
   };

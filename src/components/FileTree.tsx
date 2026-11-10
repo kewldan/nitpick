@@ -4,6 +4,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 
 import type { Severity } from '../../shared/types.ts';
+import { t } from '../i18n/index.ts';
 import { Icon } from './Icon.tsx';
 
 export interface TreeItem {
@@ -75,9 +76,9 @@ export function FileTree({
     });
 
   return (
-    <nav className="np-panel tree" aria-label="Files">
+    <nav className="np-panel tree" aria-label={t().tree.files}>
       <div className="np-panel__head tree__head">
-        <span className="np-panel__title">{title ?? 'Files'}</span>
+        <span className="np-panel__title">{title ?? t().tree.files}</span>
         <span className="tree__actions">
           {actions}
           {!actions && <span className="np-file__meta">{items.length}</span>}
@@ -120,7 +121,7 @@ export function FileTree({
                   <span
                     className="tree__count"
                     style={{ color: `var(--${r.item.severity ?? 'nit'}-text)` }}
-                    aria-label={`${r.item.count} open`}
+                    aria-label={t().tree.open(r.item.count)}
                   >
                     <span
                       className="np-dot"
@@ -130,7 +131,7 @@ export function FileTree({
                   </span>
                 )}
                 {!r.item.count && r.item.done && (
-                  <span className="tree__done" aria-label="All fixed">
+                  <span className="tree__done" aria-label={t().tree.allFixed}>
                     <Icon name="check" size={12} />
                   </span>
                 )}
@@ -139,8 +140,8 @@ export function FileTree({
                 <button
                   type="button"
                   className="np-btn np-btn--icon tree__remove"
-                  aria-label={`Remove ${r.item.path}`}
-                  title="Remove file"
+                  aria-label={t().tree.remove(r.item.path)}
+                  title={t().tree.removeTitle}
                   onClick={() => onRemove(r.item.key)}
                 >
                   <Icon name="close" size={12} />

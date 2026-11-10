@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { getLocale, setLocale, t } from '../i18n/index.ts';
 import { navigate, useTheme } from '../lib/hooks.tsx';
 import { Icon, LogoMark } from './Icon.tsx';
 
@@ -42,10 +43,19 @@ export function Header({
         {actions}
         <button
           type="button"
+          className="np-btn np-btn--icon lang-toggle"
+          onClick={() => setLocale(getLocale() === 'ru' ? 'en' : 'ru')}
+          aria-label={t().header.language}
+          title={t().header.language}
+        >
+          {getLocale() === 'ru' ? 'EN' : 'RU'}
+        </button>
+        <button
+          type="button"
           className="np-btn np-btn--icon"
           onClick={toggle}
-          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+          aria-label={theme === 'dark' ? t().header.toLight : t().header.toDark}
+          title={theme === 'dark' ? t().header.lightTitle : t().header.darkTitle}
         >
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
         </button>

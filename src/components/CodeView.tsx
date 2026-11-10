@@ -5,6 +5,7 @@ import { memo, type MouseEvent, type ReactNode } from 'react';
 
 import type { Comment, Severity } from '../../shared/types.ts';
 import type { Line, Tok } from '../lib/highlight.ts';
+import { t } from '../i18n/index.ts';
 import { SEVERITY } from '../lib/text.ts';
 
 export const Toks = memo(function Toks({ toks }: { toks: Tok[] }) {
@@ -40,7 +41,7 @@ const Row = memo(function Row({
         <button
           type="button"
           className="np-line__num"
-          aria-label={`Comment on line ${n}`}
+          aria-label={t().code.commentOnLine(n)}
           onClick={(e) => onNum(n, e)}
         >
           {n}

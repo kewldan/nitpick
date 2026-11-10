@@ -1,52 +1,41 @@
-import type { Expiry, Severity, Verdict } from '../../shared/types.ts';
+import type { Severity, Verdict } from '../../shared/types.ts';
+import { getLocale, t } from '../i18n/index.ts';
 
-export const plural = (n: number, word: string, many = `${word}s`) =>
-  `${n} ${n === 1 ? word : many}`;
-
-export const SEVERITY: Record<
-  Severity,
-  { label: string; rank: number; hint: string }
-> = {
-  blocker: { label: 'Blocker', rank: 0, hint: 'Must fix. Wrong result, crash, or leak.' },
-  issue: { label: 'Issue', rank: 1, hint: 'Should fix before this is done.' },
-  suggestion: { label: 'Suggestion', rank: 2, hint: 'A better way worth learning.' },
-  nit: { label: 'Nit', rank: 3, hint: 'Style or taste. Optional.' },
-  praise: { label: 'Praise', rank: 4, hint: 'Good call. Keep doing this.' },
+/** Rank, label and hint of a severity, in the current language. */
+export const SEVERITY: Record<Severity, { rank: number; readonly label: string; readonly hint: string }> = {
+  blocker: { rank: 0, get label() { return t().severity.blocker.label; }, get hint() { return t().severity.blocker.hint; } },
+  issue: { rank: 1, get label() { return t().severity.issue.label; }, get hint() { return t().severity.issue.hint; } },
+  suggestion: { rank: 2, get label() { return t().severity.suggestion.label; }, get hint() { return t().severity.suggestion.hint; } },
+  nit: { rank: 3, get label() { return t().severity.nit.label; }, get hint() { return t().severity.nit.hint; } },
+  praise: { rank: 4, get label() { return t().severity.praise.label; }, get hint() { return t().severity.praise.hint; } },
 };
 
-export const VERDICT: Record<Verdict, { label: string; badge: Severity }> = {
-  changes: { label: 'Changes requested', badge: 'issue' },
-  approved: { label: 'Approved', badge: 'praise' },
-  comment: { label: 'Comments only', badge: 'nit' },
-};
+const BADGE: Record<Verdict, Severity> = { changes: 'issue', approved: 'praise', comment: 'nit' };
 
-export const EXPIRY_LABEL: Record<Expiry, string> = {
-  '1d': '1 day',
-  '7d': '7 days',
-  '30d': '30 days',
-  never: 'Never',
-};
+export function verdict(v: Verdict): { label: string; badge: Severity } {
+  return { label: t().verdict[v], badge: BADGE[v] };
+}
 
 export function expiryText(expiresAt: string | null, now = Date.now()): string {
-  if (!expiresAt) return 'Never expires';
+  const m = t().expiry;
+  if (!expiresAt) return m.never;
   const ms = Date.parse(expiresAt) - now;
-  if (ms <= 0) return 'Expired';
+  if (ms <= 0) return m.expired;
   const h = Math.round(ms / 3600_000);
-  if (h < 1) return 'Expires in less than an hour';
-  if (h < 36) return `Expires in ${plural(h, 'hour')}`;
-  return `Expires in ${plural(Math.round(h / 24), 'day')}`;
+  if (h < 1) return m.lessThanHour;
+  if (h < 36) return m.inHours(h);
+  return m.inDays(Math.round(h / 24));
 }
 
 export function relativeTime(iso: string, now = Date.now()): string {
-  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000));
-  if (s < 60) return 'just now';
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min ago`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${plural(h, 'hour')} ago`;
-  const d = Math.round(h / 24);
-  if (d < 30) return `${plural(d, 'day')} ago`;
-  return new Date(iso).toLocaleDateString();
+  const rtf = new Intl.RelativeTimeFormat(getLocale(), { numeric: 'auto' });
+  const s = Math.round((Date.parse(iso) - now) / 1000);
+  const abs = Math.abs(s);
+  if (abs < 60) return rtf.format(0, 'second');
+  if (abs < 3600) return rtf.format(Math.round(s / 60), 'minute');
+  if (abs < 86_400) return rtf.format(Math.round(s / 3600), 'hour');
+  if (abs < 30 * 86_400) return rtf.format(Math.round(s / 86_400), 'day');
+  return new Date(iso).toLocaleDateString(getLocale());
 }
 
 /** A comment's text without backticks, cut to `max` characters. */
@@ -55,9 +44,7 @@ export function excerpt(text: string, max = 96): string {
   return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
 }
 
-export function lineLabel(line: number, endLine: number): string {
-  return endLine > line ? `lines ${line}–${endLine}` : `line ${line}`;
-}
+export const lineLabel = (line: number, endLine: number) => t().line(line, endLine);
 
 export function shortId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);

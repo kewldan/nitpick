@@ -18,6 +18,13 @@ import {
   validateReviewInput,
 } from '../shared/validate.ts';
 import { randomId, type Store } from './store.ts';
+import { pickLocale, SERVER_MESSAGES, type Locale } from '../shared/i18n.ts';
+
+/** The caller's locale: the app sends X-Lang, browsers send Accept-Language. */
+export function localeOf(c: Context): Locale {
+  return pickLocale(c.req.header('x-lang'), c.req.header('accept-language'));
+}
+const msg = (c: Context) => SERVER_MESSAGES[localeOf(c)];
 
 export interface AppOptions {
   store: Store;
@@ -107,11 +114,11 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
   /** Loads a live review or produces the matching error response. */
   const load = (c: Context): Review | Response => {
     const id = c.req.param('id') ?? '';
-    if (!ID_PARAM.test(id)) return c.json({ error: 'Review not found' }, 404);
+    if (!ID_PARAM.test(id)) return c.json({ error: msg(c).notFound }, 404);
     const review = store.get(id);
-    if (!review) return c.json({ error: 'Review not found' }, 404);
+    if (!review) return c.json({ error: msg(c).notFound }, 404);
     if (isExpired(review)) {
-      return c.json({ error: 'This review has expired', expired: true }, 410);
+      return c.json({ error: msg(c).expired, expired: true }, 410);
     }
     return review;
   };
@@ -126,7 +133,7 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
     '/api/*',
     bodyLimit({
       maxSize: 12 * 1024 * 1024,
-      onError: (c) => c.json({ error: 'Request is too large' }, 413),
+      onError: (c) => c.json({ error: msg(c).tooLarge }, 413),
     }),
   );
 
@@ -135,10 +142,10 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
       return c.json({ error: err.message }, 400);
     }
     if (err instanceof SyntaxError) {
-      return c.json({ error: 'Malformed JSON' }, 400);
+      return c.json({ error: msg(c).malformedJson }, 400);
     }
     console.error(err);
-    return c.json({ error: 'Something went wrong on our side' }, 500);
+    return c.json({ error: msg(c).serverError }, 500);
   });
 
   app.get('/api/health', (c) => c.json({ ok: true }));
@@ -146,9 +153,9 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
   // Publish a new review.
   app.post('/api/reviews', async (c) => {
     if (limited(c, 'create', 60, 3600_000)) {
-      return c.json({ error: 'Too many reviews from you. Try again later.' }, 429);
+      return c.json({ error: msg(c).tooManyReviews }, 429);
     }
-    const input = validateReviewInput(await c.req.json());
+    const input = validateReviewInput(await c.req.json(), localeOf(c));
     const now = Date.now();
     const iso = new Date(now).toISOString();
     const review: Omit<Review, 'id'> = {
@@ -189,11 +196,11 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
     const review = load(c);
     if (review instanceof Response) return review;
     if (limited(c, 'key', 120, 600_000)) {
-      return c.json({ error: 'Too many attempts' }, 429);
+      return c.json({ error: msg(c).tooManyAttempts }, 429);
     }
     return store.checkKey(review.id, editKey(c))
       ? c.json({ ok: true })
-      : c.json({ error: 'This edit link is not valid' }, 403);
+      : c.json({ error: msg(c).badEditKey }, 403);
   });
 
   // Republish: replace the mentor's content, keep the mentee's state.
@@ -201,9 +208,9 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
     const found = load(c);
     if (found instanceof Response) return found;
     if (!store.checkKey(found.id, editKey(c))) {
-      return c.json({ error: 'This edit link is not valid' }, 403);
+      return c.json({ error: msg(c).badEditKey }, 403);
     }
-    const input = validateReviewInput(await c.req.json());
+    const input = validateReviewInput(await c.req.json(), localeOf(c));
     const now = Date.now();
     const next = store.update(found.id, (prev) => ({
       ...prev,
@@ -215,13 +222,13 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
           : expiresAt(input.expiry, now),
       comments: mergeComments(input, prev.comments),
     }));
-    return next ? c.json(next) : c.json({ error: 'Review not found' }, 404);
+    return next ? c.json(next) : c.json({ error: msg(c).notFound }, 404);
   });
 
   app.delete('/api/reviews/:id', (c) => {
     const id = c.req.param('id');
     if (!ID_PARAM.test(id) || !store.checkKey(id, editKey(c))) {
-      return c.json({ error: 'This edit link is not valid' }, 403);
+      return c.json({ error: msg(c).badEditKey }, 403);
     }
     store.remove(id);
     return c.body(null, 204);
@@ -232,11 +239,11 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
     const found = load(c);
     if (found instanceof Response) return found;
     if (limited(c, 'write', 600, 600_000)) {
-      return c.json({ error: 'Slow down a little' }, 429);
+      return c.json({ error: msg(c).slowDown }, 429);
     }
     const isMentor = store.checkKey(found.id, editKey(c));
     if (!found.allowResolve && !isMentor) {
-      return c.json({ error: 'Progress tracking is off for this review' }, 403);
+      return c.json({ error: msg(c).resolveOff }, 403);
     }
     const body = (await c.req.json()) as { resolved?: unknown };
     const resolved = body.resolved === true;
@@ -250,7 +257,7 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
         return hit;
       }),
     }));
-    if (!next || !hit) return c.json({ error: 'Comment not found' }, 404);
+    if (!next || !hit) return c.json({ error: msg(c).commentNotFound }, 404);
     return c.json(hit);
   });
 
@@ -259,13 +266,13 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
     const found = load(c);
     if (found instanceof Response) return found;
     if (limited(c, 'write', 600, 600_000)) {
-      return c.json({ error: 'Slow down a little' }, 429);
+      return c.json({ error: msg(c).slowDown }, 429);
     }
     const isMentor = store.checkKey(found.id, editKey(c));
     if (!found.allowReplies && !isMentor) {
-      return c.json({ error: 'Replies are off for this review' }, 403);
+      return c.json({ error: msg(c).repliesOff }, 403);
     }
-    const text = validateReply(await c.req.json());
+    const text = validateReply(await c.req.json(), localeOf(c));
     const cid = c.req.param('cid');
     let hit: Comment | undefined;
     let tooMany = false;
@@ -292,12 +299,12 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
         return hit;
       }),
     }));
-    if (tooMany) return c.json({ error: 'This thread is full' }, 409);
-    if (!hit) return c.json({ error: 'Comment not found' }, 404);
+    if (tooMany) return c.json({ error: msg(c).threadFull }, 409);
+    if (!hit) return c.json({ error: msg(c).commentNotFound }, 404);
     return c.json(hit, 201);
   });
 
-  app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
+  app.all('/api/*', (c) => c.json({ error: msg(c).apiNotFound }, 404));
 
   return app;
 }

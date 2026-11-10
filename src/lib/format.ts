@@ -2,6 +2,7 @@
 // clang-format for C, C++, Java and C#; Ruff for Python; gofmt for Go;
 // Prettier for TypeScript and JavaScript.
 
+import { t } from '../i18n/index.ts';
 import { language, type FormatterId } from './languages.ts';
 
 export const CLANG_STYLES = [
@@ -66,6 +67,14 @@ export function formatterControls(f: FormatterId | null) {
   };
 }
 
+/** Stored for files shown without formatting; displayed via formatterName(). */
+export const AS_PASTED = 'As pasted';
+
+/** A stored formatter label as shown to the user. */
+export function formatterName(label: string): string {
+  return label === AS_PASTED ? t().formatter.asPasted : label;
+}
+
 export function formatterLabel(langId: string, opts: FormatOptions): string {
   const f = language(langId).formatter;
   switch (f) {
@@ -78,7 +87,7 @@ export function formatterLabel(langId: string, opts: FormatOptions): string {
     case 'ruff':
       return 'Ruff';
     default:
-      return 'As pasted';
+      return AS_PASTED;
   }
 }
 

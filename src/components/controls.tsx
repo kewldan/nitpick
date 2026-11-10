@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 
 import type { Severity } from '../../shared/types.ts';
+import { t } from '../i18n/index.ts';
 import { SEVERITY } from '../lib/text.ts';
 import { Icon } from './Icon.tsx';
 
@@ -130,9 +131,9 @@ export function Pill({
 }
 
 export function Steps({ current }: { current: 1 | 2 | 3 }) {
-  const labels = ['Paste & format', 'Comment', 'Share'];
+  const labels = t().steps.items;
   return (
-    <ol className="np-steps" aria-label="Steps">
+    <ol className="np-steps" aria-label={t().steps.label}>
       {labels.map((label, i) => {
         const n = i + 1;
         const done = n < current;

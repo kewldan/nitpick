@@ -12,6 +12,7 @@ import { DEFAULT_FORMAT, type FormatOptions } from './format.ts';
 import { language } from './languages.ts';
 import { storage } from './storage.ts';
 import { shortId } from './text.ts';
+import { getLocale } from '../i18n/index.ts';
 
 export interface DraftFile {
   /** Local id, stable across renames. */
@@ -144,6 +145,7 @@ export function toInput(d: Draft): ReviewInput {
   const paths = new Set(files.map((f) => f.path));
   return {
     title: d.title.trim(),
+    locale: getLocale(),
     files,
     summary: d.summary.trim(),
     verdict: d.verdict,

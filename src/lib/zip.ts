@@ -4,6 +4,7 @@
 import { strToU8, unzipSync, zipSync, type Unzipped } from 'fflate';
 
 import { LIMITS } from '../../shared/types.ts';
+import { t } from '../i18n/index.ts';
 import { languageFromFileName } from './languages.ts';
 
 export interface ImportedFile {
@@ -12,10 +13,14 @@ export interface ImportedFile {
   text: string;
 }
 
+export type SkipReason =
+  | 'tool-folder' | 'system' | 'binary' | 'too-big' | 'not-text' | 'empty'
+  | 'too-many-lines' | 'too-many-files' | 'size-limit';
+
 export interface ImportResult {
   files: ImportedFile[];
   /** Paths left out, with the reason, to show the mentor. */
-  skipped: { path: string; reason: string }[];
+  skipped: { path: string; reason: SkipReason }[];
   /** A name for the project, from the archive or its single top folder. */
   name: string;
 }
@@ -35,15 +40,15 @@ const BINARY_EXT = new Set([
   'mp3', 'mp4', 'wav', 'mov', 'pdb', 'ilk', 'exp', 'idb', 'pch', 'gch', 'out',
 ]);
 
-function skipReason(path: string): string | null {
+function skipReason(path: string): SkipReason | null {
   const parts = path.split('/');
   const base = parts[parts.length - 1];
   if (parts.slice(0, -1).some((p) => IGNORED_DIRS.has(p) || /^cmake-build-/.test(p))) {
-    return 'build or tool folder';
+    return 'tool-folder';
   }
-  if (IGNORED_FILES.has(base) || base.startsWith('._')) return 'system file';
+  if (IGNORED_FILES.has(base) || base.startsWith('._')) return 'system';
   const ext = /\.([A-Za-z0-9]+)$/.exec(base)?.[1].toLowerCase();
-  if (ext && BINARY_EXT.has(ext)) return 'binary file';
+  if (ext && BINARY_EXT.has(ext)) return 'binary';
   return null;
 }
 
@@ -98,12 +103,12 @@ function build(entries: { path: string; bytes: Uint8Array }[], fallbackName: str
       continue;
     }
     if (bytes.length > LIMITS.code) {
-      skipped.push({ path, reason: 'larger than 200 KB' });
+      skipped.push({ path, reason: 'too-big' });
       continue;
     }
     const text = decode(bytes);
     if (text === null) {
-      skipped.push({ path, reason: 'not a text file' });
+      skipped.push({ path, reason: 'not-text' });
       continue;
     }
     if (!text.trim()) {
@@ -111,16 +116,16 @@ function build(entries: { path: string; bytes: Uint8Array }[], fallbackName: str
       continue;
     }
     if (text.split('\n').length > LIMITS.lines) {
-      skipped.push({ path, reason: `more than ${LIMITS.lines} lines` });
+      skipped.push({ path, reason: 'too-many-lines' });
       continue;
     }
     if (kept.length >= LIMITS.files) {
-      skipped.push({ path, reason: `over ${LIMITS.files} files` });
+      skipped.push({ path, reason: 'too-many-files' });
       continue;
     }
     // Formatted code and the original both count, so leave room for both.
     if ((total + text.length) * 2 > LIMITS.totalCode) {
-      skipped.push({ path, reason: 'project size limit' });
+      skipped.push({ path, reason: 'size-limit' });
       continue;
     }
     total += text.length;
@@ -148,7 +153,7 @@ export function readZip(data: Uint8Array, archiveName: string): ImportResult {
       filter: (f) => !f.name.endsWith('/') && f.originalSize <= LIMITS.code * 4,
     });
   } catch {
-    throw new Error('This file isn’t a valid .zip archive.');
+    throw new Error(t().import.invalidZip);
   }
   const entries = Object.entries(unzipped).map(([path, bytes]) => ({
     path: path.replace(/\\/g, '/').replace(/^\.?\//, ''),
@@ -163,7 +168,7 @@ export async function readUpload(list: FileList | File[]): Promise<ImportResult>
   const zip = picked.find((f) => /\.zip$/i.test(f.name));
   if (zip && picked.length === 1) {
     if (zip.size > MAX_ARCHIVE_BYTES) {
-      throw new Error('That archive is larger than 30 MB. Leave out build folders and try again.');
+      throw new Error(t().import.archiveTooBig);
     }
     return readZip(new Uint8Array(await zip.arrayBuffer()), zip.name);
   }

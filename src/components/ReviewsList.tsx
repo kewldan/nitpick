@@ -7,7 +7,8 @@ import type { ReviewStatus } from '../../shared/types.ts';
 import { api } from '../lib/api.ts';
 import { navigate, useCopy } from '../lib/hooks.tsx';
 import { storage, type SavedReview } from '../lib/storage.ts';
-import { expiryText, plural, relativeTime, VERDICT } from '../lib/text.ts';
+import { t } from '../i18n/index.ts';
+import { expiryText, relativeTime, verdict } from '../lib/text.ts';
 import { Icon } from './Icon.tsx';
 import { shareUrl } from './PublishDialog.tsx';
 
@@ -27,9 +28,7 @@ export function ReviewsList() {
   if (!saved.length) return null;
 
   const forget = (id: string) => {
-    const ok = window.confirm(
-      'Remove this review from the list? It stays online, but you’ll need its edit link to change it again.',
-    );
+    const ok = window.confirm(t().list.forgetConfirm);
     if (!ok) return;
     storage.forgetReview(id);
     setSaved(storage.reviews());
@@ -39,9 +38,9 @@ export function ReviewsList() {
     <section className="np-panel reviews" aria-labelledby="reviews-title">
       <div className="np-panel__head">
         <h2 id="reviews-title" className="np-panel__title">
-          Your reviews
+          {t().list.title}
         </h2>
-        <span className="np-file__meta">Saved in this browser</span>
+        <span className="np-file__meta">{t().list.savedHere}</span>
       </div>
       <ul className="reviews__list">
         {saved.map((r) => {
@@ -59,22 +58,22 @@ export function ReviewsList() {
                   navigate(edit);
                 }}
               >
-                <span className="reviews__title">{s?.title || r.title || 'Untitled review'}</span>
+                <span className="reviews__title">{s?.title || r.title || t().common.untitled}</span>
                 <span className="reviews__meta">
                   <span className="mono">/{r.id}</span>
                   {s && !gone && (
                     <>
                       <span>·</span>
-                      <span>{VERDICT[s.verdict].label}</span>
+                      <span>{verdict(s.verdict).label}</span>
                       <span>·</span>
                       <span>
-                        {s.actionable ? `${s.fixed}/${s.actionable} fixed` : plural(s.total, 'comment')}
+                        {s.actionable ? t().list.fixedOf(s.fixed, s.actionable) : t().plural.comments(s.total)}
                       </span>
                       {s.replies > 0 && (
                         <>
                           <span>·</span>
                           <span className="reviews__replies">
-                            {plural(s.replies, 'reply', 'replies')}
+                            {t().plural.replies(s.replies)}
                           </span>
                         </>
                       )}
@@ -82,7 +81,7 @@ export function ReviewsList() {
                       <span>{expiryText(s.expiresAt)}</span>
                     </>
                   )}
-                  {gone && <span>· {s?.expired ? 'Expired' : 'Deleted'}</span>}
+                  {gone && <span>· {s?.expired ? t().list.expired : t().list.deleted}</span>}
                   {!s && <span>· {relativeTime(r.createdAt)}</span>}
                 </span>
               </a>
@@ -102,14 +101,14 @@ export function ReviewsList() {
                     onClick={() => copy(shareUrl(r.id), r.id)}
                   >
                     <Icon name={copied === r.id ? 'check' : 'copy'} />
-                    {copied === r.id ? 'Copied' : 'Copy link'}
+                    {copied === r.id ? t().common.copied : t().list.copyLink}
                   </button>
                 )}
                 <button
                   type="button"
                   className="np-btn np-btn--icon"
-                  aria-label={`Remove “${r.title || r.id}” from this list`}
-                  title="Remove from list"
+                  aria-label={t().list.removeAria(r.title || r.id)}
+                  title={t().list.removeTitle}
                   onClick={() => forget(r.id)}
                 >
                   <Icon name="close" />

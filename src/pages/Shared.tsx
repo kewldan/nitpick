@@ -19,10 +19,11 @@ import {
   excerpt,
   expiryText,
   lineLabel,
-  plural,
   SEVERITY,
-  VERDICT,
+  verdict as verdictOf,
 } from '../lib/text.ts';
+import { t } from '../i18n/index.ts';
+import { languageName } from '../lib/languages.ts';
 import { ErrorPage, LoadingPage } from './ErrorPage.tsx';
 import { scrollToLine, scrollToLineSoon } from './ReviewStep.tsx';
 import { downloadZip } from '../lib/zip.ts';
@@ -60,7 +61,7 @@ export function Shared({ id }: { id: string }) {
   useRefresh(fetchReview, 60_000, !!review);
 
   useEffect(() => {
-    if (review) document.title = `${review.title || 'Code review'} · Nitpick`;
+    if (review) document.title = `${review.title || m.defaultTitle} · Nitpick`;
     return () => {
       document.title = 'Nitpick';
     };
@@ -102,7 +103,7 @@ export function Shared({ id }: { id: string }) {
       replace(await api.resolve(id, c.id, next, mentorKey));
     } catch (err) {
       replace(c);
-      toast(err instanceof Error ? err.message : 'Could not save');
+      toast(err instanceof Error ? err.message : t().shared.couldNotSave);
     }
   };
 
@@ -117,7 +118,7 @@ export function Shared({ id }: { id: string }) {
       replace(updated);
       return true;
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not send the reply');
+      toast(err instanceof Error ? err.message : t().mentor.couldNotReply);
       return false;
     }
   };
@@ -125,12 +126,12 @@ export function Shared({ id }: { id: string }) {
   if (error) {
     return (
       <ErrorPage
-        title={error.expired ? 'This review has expired' : error.status === 404 ? 'Review not found' : 'Something went wrong'}
+        title={error.expired ? t().mentor.expiredTitle : error.status === 404 ? t().mentor.notFoundTitle : t().mentor.wentWrong}
         text={
           error.expired
-            ? 'The link was set to expire, so the review is gone. Ask your mentor for a new one.'
+            ? t().shared.expiredText
             : error.status === 404
-              ? 'Check the link, or ask your mentor to send it again.'
+              ? t().shared.notFoundText
               : error.message
         }
       />
@@ -138,6 +139,7 @@ export function Shared({ id }: { id: string }) {
   }
   if (!review || !file) return <LoadingPage />;
 
+  const m = t().shared;
   const lang = language(file.language);
   const multi = review.files.length > 1;
   const stats = fileStats(review.comments);
@@ -153,16 +155,14 @@ export function Shared({ id }: { id: string }) {
   const byRank = (a: Comment, b: Comment) => SEVERITY[a.severity].rank - SEVERITY[b.severity].rank;
 
   const progressNote = !review.allowResolve
-    ? 'Your mentor turned off progress tracking for this review.'
+    ? m.noteOff
     : actionable.length === 0
-      ? 'Nothing to fix. Just read the notes.'
+      ? m.noteNothing
       : fixed === actionable.length
-        ? 'All done. Tell your mentor it’s ready for another look.'
+        ? m.noteDone
         : blockersOpen
-          ? blockersOpen === 1
-            ? '1 blocker is still open. Start there.'
-            : `${blockersOpen} blockers are still open. Start there.`
-          : 'Blockers are done. The rest is polish.';
+          ? m.noteBlockers(blockersOpen)
+          : m.noteRest;
 
   const inFile = all.filter((c) => c.file === file.path);
   const visible = inFile.filter((c) =>
@@ -199,7 +199,7 @@ export function Shared({ id }: { id: string }) {
   const checklist = [...actionable].sort(
     (a, b) => byRank(a, b) || (order.get(a.file) ?? 0) - (order.get(b.file) ?? 0) || a.line - b.line,
   );
-  const verdict = VERDICT[review.verdict];
+  const verdict = verdictOf(review.verdict);
   const fileName = file.path;
   const fileOpen = inFile.filter((c) => !c.resolved).length;
   const editHref = mentorKey ? `/e/${id}#key=${mentorKey}` : null;
@@ -224,7 +224,7 @@ export function Shared({ id }: { id: string }) {
                 }}
               >
                 <Icon name="pencil" />
-                Mentor: edit review
+                {m.mentorEdit}
               </a>
             )}
           </>
@@ -234,7 +234,7 @@ export function Shared({ id }: { id: string }) {
         {mentorKey && (
           <p className="preview-note" role="note">
             <Icon name="external" size={14} />
-            This is what your mentee sees. Ticks and replies you make here are saved for real.
+            {m.previewNote}
           </p>
         )}
         <section className="shared-hero" aria-labelledby="sh-title">
@@ -242,26 +242,28 @@ export function Shared({ id }: { id: string }) {
             <div className="shared-hero__meta">
               <Pill tone={verdict.badge}>{verdict.label}</Pill>
               <span>
-                {review.reviewer ? `${review.reviewer} reviewed` : 'Review of'}{' '}
-                {multi ? plural(review.files.length, 'file') : `${fileName} · ${lang.label}`}
+                {m.heroMeta(
+                  review.reviewer,
+                  multi ? t().plural.files(review.files.length) : `${fileName} · ${languageName(lang.id)}`,
+                )}
               </span>
             </div>
             <h1 id="sh-title" className="t-display shared-hero__title">
-              {review.title || 'Code review'}
+              {review.title || m.defaultTitle}
             </h1>
             {review.summary && <p className="t-body-lg shared-hero__summary">{review.summary}</p>}
           </div>
           <div className="np-panel progress-card">
             <div className="row-between">
-              <span className="np-panel__title">Your progress</span>
+              <span className="np-panel__title">{m.progress}</span>
               <span className="mono progress-card__count">
-                {actionable.length ? `${fixed} / ${actionable.length} fixed` : '—'}
+                {actionable.length ? m.fixedOfN(fixed, actionable.length) : '—'}
               </span>
             </div>
             <div
               className="np-progress"
               role="progressbar"
-              aria-label="Fixed comments"
+              aria-label={m.fixedAria}
               aria-valuemin={0}
               aria-valuemax={actionable.length}
               aria-valuenow={fixed}
@@ -294,31 +296,31 @@ export function Shared({ id }: { id: string }) {
                     className="np-btn np-btn--ghost np-btn--sm"
                     onClick={() => downloadZip(review.title || id, review.files)}
                   >
-                    Download .zip
+                    {m.downloadZip}
                   </button>
                 }
               />
             </div>
           )}
-          <section className="np-panel code-panel" aria-label="Reviewed code">
+          <section className="np-panel code-panel" aria-label={m.reviewedCodeAria}>
             <div className="np-panel__head code-panel__head">
               <span className="np-file">
                 <Icon name="file" />
                 <span className="np-file__name">{fileName}</span>
                 <span className="np-file__meta">
-                  {lang.label} · {plural(lines.length, 'line')}
+                  {languageName(lang.id)} · {t().plural.lines(lines.length)}
                 </span>
               </span>
               <div className="code-panel__tools">
                 <Seg
                   onBg
-                  label="Filter comments"
+                  label={m.filterAria}
                   value={filter}
                   onChange={setFilter}
                   items={[
-                    { id: 'all', label: `All ${inFile.length}` },
-                    { id: 'open', label: `Open ${fileOpen}` },
-                    { id: 'fixed', label: `Fixed ${inFile.length - fileOpen}` },
+                    { id: 'all', label: m.all(inFile.length) },
+                    { id: 'open', label: m.open(fileOpen) },
+                    { id: 'fixed', label: m.fixed(inFile.length - fileOpen) },
                   ]}
                 />
                 <button
@@ -327,21 +329,21 @@ export function Shared({ id }: { id: string }) {
                   onClick={() => copy(file.code, 'code')}
                 >
                   <Icon name={copied === 'code' ? 'check' : 'copy'} />
-                  {copied === 'code' ? 'Copied' : 'Copy code'}
+                  {copied === 'code' ? t().common.copied : m.copyCode}
                 </button>
               </div>
             </div>
             <CodeView key={file.path} lines={lines} classes={classes} after={after} />
           </section>
 
-          <aside className="sidebar sidebar--narrow" aria-label="Checklist">
+          <aside className="sidebar sidebar--narrow" aria-label={m.checklistAria}>
             <section className="np-panel checklist">
               <div className="row-between checklist__head">
-                <h2 className="np-panel__title">Checklist</h2>
-                <span className="meta">Blockers first</span>
+                <h2 className="np-panel__title">{m.checklist}</h2>
+                <span className="meta">{m.blockersFirst}</span>
               </div>
               {checklist.length === 0 ? (
-                <p className="muted checklist__empty">Nothing to fix here.</p>
+                <p className="muted checklist__empty">{m.nothingToFix}</p>
               ) : (
                 <ul className="checklist__list">
                   {checklist.map((c) => (
@@ -369,8 +371,8 @@ export function Shared({ id }: { id: string }) {
                       <a
                         href={`#line-${c.line}`}
                         className="np-btn np-btn--icon checklist__jump"
-                        aria-label={`Show ${c.file} ${lineLabel(c.line, c.endLine)} in the code`}
-                        title="Show in code"
+                        aria-label={m.showInCode(c.file, lineLabel(c.line, c.endLine))}
+                        title={m.showInCodeTitle}
                         onClick={(e) => {
                           e.preventDefault();
                           if (filter === 'fixed' && !c.resolved) setFilter('all');
@@ -386,7 +388,7 @@ export function Shared({ id }: { id: string }) {
               )}
             </section>
             <section className="np-panel np-panel__body">
-              <h2 className="np-panel__title">What the labels mean</h2>
+              <h2 className="np-panel__title">{m.legend}</h2>
               <dl className="legend">
                 {SEVERITIES.map((s) => (
                   <div key={s} className="legend__row">

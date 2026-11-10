@@ -32,6 +32,7 @@ import {
   formatCode,
   formatterControls,
   formatterLabel,
+  formatterName,
   indentFor,
   preloadFormatter,
   styleDefaults,
@@ -45,9 +46,10 @@ import {
   guessLanguage,
   language,
   languageFromFileName,
+  languageName,
   LANGUAGES,
 } from '../lib/languages.ts';
-import { plural } from '../lib/text.ts';
+import { t } from '../i18n/index.ts';
 import { readUpload, sortPaths, type ImportResult } from '../lib/zip.ts';
 
 type Patch = (p: Partial<Draft> | ((d: Draft) => Partial<Draft>)) => void;
@@ -62,6 +64,7 @@ function uniquePath(path: string, taken: Set<string>): string {
 }
 
 function SkippedNote({ result, onClose }: { result: ImportResult; onClose: () => void }) {
+  const m = t().import;
   const reasons = new Map<string, number>();
   for (const s of result.skipped) reasons.set(s.reason, (reasons.get(s.reason) ?? 0) + 1);
   return (
@@ -69,29 +72,28 @@ function SkippedNote({ result, onClose }: { result: ImportResult; onClose: () =>
       <Icon name="check" size={14} />
       <div className="grow">
         <p>
-          Imported {plural(result.files.length, 'file')}
-          {result.skipped.length > 0 && (
-            <>
-              . Left out {result.skipped.length}:{' '}
-              {[...reasons].map(([r, n]) => `${n} ${r}`).join(', ')}.
-            </>
-          )}
+          {m.imported(result.files.length)}
+          {result.skipped.length > 0 &&
+            m.leftOut(
+              result.skipped.length,
+              [...reasons].map(([r, n]) => `${n} — ${m.reason[r as keyof typeof m.reason]}`).join(', '),
+            )}
         </p>
         {result.skipped.length > 0 && (
           <details>
-            <summary>Show what was left out</summary>
+            <summary>{m.showLeftOut}</summary>
             <ul className="import-note__list">
               {result.skipped.slice(0, 200).map((s) => (
                 <li key={s.path}>
-                  <span className="mono">{s.path}</span> — {s.reason}
+                  <span className="mono">{s.path}</span> — {m.reason[s.reason]}
                 </li>
               ))}
-              {result.skipped.length > 200 && <li>…and {result.skipped.length - 200} more</li>}
+              {result.skipped.length > 200 && <li>{m.andMore(result.skipped.length - 200)}</li>}
             </ul>
           </details>
         )}
       </div>
-      <button type="button" className="np-btn np-btn--icon" aria-label="Dismiss" onClick={onClose}>
+      <button type="button" className="np-btn np-btn--icon" aria-label={m.dismiss} onClick={onClose}>
         <Icon name="close" />
       </button>
     </div>
@@ -116,6 +118,7 @@ export function CodeStep({
   footer?: ReactNode;
 }) {
   const toast = useToast();
+  const m = t().code;
   const [view, setView] = useState<'formatted' | 'diff'>('formatted');
   const [result, setResult] = useState<FormatResult | null>(null);
   const [pending, setPending] = useState(false);
@@ -216,7 +219,7 @@ export function CodeStep({
     const f = draft.files.find((x) => x.id === id);
     if (!f) return;
     const n = draft.comments.filter((c) => c.file === filePath(f)).length;
-    if (n && !window.confirm(`${filePath(f)} has ${plural(n, 'comment')}. Remove the file and its comments?`)) {
+    if (n && !window.confirm(m.removeFileConfirm(filePath(f), n))) {
       return;
     }
     const rest = draft.files.filter((x) => x.id !== id);
@@ -233,11 +236,11 @@ export function CodeStep({
     try {
       res = await readUpload(list);
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not read the upload');
+      toast(err instanceof Error ? err.message : m.readFailed);
       return;
     }
     if (!res.files.length) {
-      toast('Nothing to review in there: no text files after leaving out build folders and binaries.');
+      toast(m.nothingToReview);
       setImported(res);
       return;
     }
@@ -245,11 +248,7 @@ export function CodeStep({
     if (current.length) {
       const keep = new Set(res.files.map((f) => f.path));
       const lost = draft.comments.filter((c) => !keep.has(c.file)).length;
-      const ok = window.confirm(
-        `Replace the current code with ${plural(res.files.length, 'file')}?` +
-          (lost ? ` ${plural(lost, 'comment')} on files that aren’t in the upload will be removed.` : '') +
-          ' Comments on files with the same path stay on their lines.',
-      );
+      const ok = window.confirm(m.replaceConfirm(res.files.length, lost));
       if (!ok) return;
     }
     const byPath = new Map(draft.files.map((f) => [filePath(f), f]));
@@ -285,7 +284,7 @@ export function CodeStep({
     const todo = draft.files.filter((f) => f.raw.trim());
     for (let i = 0; i < todo.length; i++) {
       const f = todo[i];
-      if (todo.length > 1) setStarting(`Formatting ${i + 1} of ${todo.length}…`);
+      if (todo.length > 1) setStarting(m.formattingProgress(i + 1, todo.length));
       const r =
         f.id === file.id && result && !pending ? result : await formatCode(f.raw, f.language, draft.fmt);
       results.set(f.id, r);
@@ -294,10 +293,7 @@ export function CodeStep({
     setStarting(null);
     setFailed(bad);
     if (bad.size && todo.length > 1) {
-      toast(
-        `${plural(bad.size, 'file')} couldn’t be parsed by the formatter and ${bad.size === 1 ? 'is' : 'are'} shown as uploaded.`,
-        'info',
-      );
+      toast(m.filesUnparsed(bad.size), 'info');
     }
     onStart(results);
   };
@@ -331,21 +327,22 @@ export function CodeStep({
     importFiles(e.dataTransfer.files);
   };
 
-  const fmtName = formatterLabel(file.language, draft.fmt);
+  const fm = t().formatter;
+  const fmtName = formatterName(formatterLabel(file.language, draft.fmt));
   const status = !file.raw.trim()
     ? null
     : pending
-      ? { dot: 'var(--text-faint)', text: `${fmtName} · formatting…` }
+      ? { dot: 'var(--text-faint)', text: fm.formatting(fmtName) }
       : result?.error
-        ? { dot: 'var(--issue)', text: `${fmtName} · couldn’t parse` }
+        ? { dot: 'var(--issue)', text: fm.cantParse(fmtName) }
         : lang.formatter
           ? { dot: 'var(--praise)', text: fmtName }
-          : { dot: 'var(--nit)', text: `No formatter for ${lang.label}` };
+          : { dot: 'var(--nit)', text: fm.none(languageName(file.language)) };
 
   const treeItems: TreeItem[] = draft.files.map((f) => ({
     key: f.id,
     path: filePath(f),
-    warn: failed.get(f.id) ? 'The formatter couldn’t parse this file' : undefined,
+    warn: failed.get(f.id) ? fm.fileWarn : undefined,
   }));
 
   const uploadButton = (label: string, cls = 'np-btn np-btn--ghost np-btn--sm') => (
@@ -378,19 +375,19 @@ export function CodeStep({
         <div className="drop-overlay" aria-hidden="true">
           <div className="drop-overlay__box">
             <Icon name="file" size={24} />
-            <p>Drop a .zip or files to review</p>
+            <p>{m.drop}</p>
           </div>
         </div>
       )}
       <Header
-        crumb={<span className="crumb">{published ? draft.title || 'Untitled review' : 'New review'}</span>}
+        crumb={<span className="crumb">{published ? draft.title || t().common.untitled : m.newReview}</span>}
         middle={<Steps current={1} />}
       />
       <main className="container container--code stack-20">
         <div className="code-toolbar">
           <div className="np-field title-field">
             <label htmlFor="np-title" className="np-label">
-              Review title
+              {m.titleLabel}
             </label>
             <input
               id="np-title"
@@ -399,26 +396,26 @@ export function CodeStep({
               value={draft.title}
               maxLength={LIMITS.title}
               onChange={(e) => patch({ title: e.target.value })}
-              placeholder="Untitled review"
+              placeholder={t().common.untitled}
             />
           </div>
           <div className="code-toolbar__controls">
             <div className="np-field">
               <label htmlFor="np-lang" className="np-label">
-                {multi ? 'Language of this file' : 'Language'}
+                {multi ? m.languageOfFile : m.language}
               </label>
               <Select
                 id="np-lang"
                 value={file.language}
                 minWidth={140}
                 onChange={setLanguage}
-                options={LANGUAGES.map((l) => ({ id: l.id, label: l.label }))}
+                options={LANGUAGES.map((l) => ({ id: l.id, label: languageName(l.id) }))}
               />
             </div>
             {controls.style && (
               <div className="np-field">
                 <label htmlFor="np-style" className="np-label">
-                  Style
+                  {m.style}
                 </label>
                 <Select
                   id="np-style"
@@ -436,7 +433,7 @@ export function CodeStep({
             {controls.indent && (
               <div className="np-field">
                 <span id="np-indent-l" className="np-label">
-                  Indent
+                  {m.indent}
                 </span>
                 <Seg
                   labelledBy="np-indent-l"
@@ -452,15 +449,15 @@ export function CodeStep({
             {controls.braces && (
               <div className="np-field">
                 <span id="np-braces-l" className="np-label">
-                  Braces
+                  {m.braces}
                 </span>
                 <Seg
                   labelledBy="np-braces-l"
                   value={draft.fmt.braces}
                   onChange={(braces) => patch({ fmt: { ...draft.fmt, braces } })}
                   items={[
-                    { id: 'attach' as const, label: 'Attach' },
-                    { id: 'allman' as const, label: 'Allman' },
+                    { id: 'attach' as const, label: m.attach },
+                    { id: 'allman' as const, label: m.allman },
                   ]}
                 />
               </div>
@@ -477,14 +474,14 @@ export function CodeStep({
               selected={file.id}
               onSelect={onSelect}
               onRemove={removeFile}
-              title={plural(draft.files.length, 'file')}
+              title={m.filesTitle(draft.files.length)}
               actions={
                 <>
                   <button
                     type="button"
                     className="np-btn np-btn--icon"
-                    aria-label="Add a file"
-                    title="Add a file"
+                    aria-label={m.addFileAria}
+                    title={m.addFileAria}
                     onClick={addFile}
                   >
                     <Icon name="plus" size={14} />
@@ -492,8 +489,8 @@ export function CodeStep({
                   <button
                     type="button"
                     className="np-btn np-btn--icon"
-                    aria-label="Upload a .zip or files"
-                    title="Upload a .zip or files"
+                    aria-label={m.uploadAria}
+                    title={m.uploadAria}
                     onClick={() => uploadRef.current?.click()}
                   >
                     <Icon name="file" size={14} />
@@ -502,13 +499,13 @@ export function CodeStep({
               }
             />
           )}
-          <section className="np-panel pane" aria-label="Original code">
+          <section className="np-panel pane" aria-label={m.originalAria}>
             <div className="np-panel__head">
               <div className="pane__title">
                 <input
                   key={file.id}
                   className="file-input"
-                  aria-label="File name"
+                  aria-label={m.fileName}
                   defaultValue={file.path}
                   maxLength={LIMITS.path}
                   placeholder={defaultFileName(file.language)}
@@ -526,15 +523,15 @@ export function CodeStep({
                   }}
                 />
                 <span className="np-file__meta">
-                  {file.raw ? plural(rawLines, 'line') : 'Original'}
+                  {file.raw ? t().plural.lines(rawLines) : m.original}
                 </span>
               </div>
               <div className="pane__actions">
-                {!multi && uploadButton('Upload .zip')}
+                {!multi && uploadButton(m.uploadZip)}
                 {!multi && (
                   <button type="button" className="np-btn np-btn--ghost np-btn--sm" onClick={addFile}>
                     <Icon name="plus" />
-                    Add file
+                    {m.addFile}
                   </button>
                 )}
                 {!multi && SAMPLES[file.language] && (
@@ -543,7 +540,7 @@ export function CodeStep({
                     className="np-btn np-btn--ghost np-btn--sm"
                     onClick={() => patchFile(file.id, { raw: SAMPLES[file.language] })}
                   >
-                    Load example
+                    {m.loadExample}
                   </button>
                 )}
                 <button
@@ -552,14 +549,14 @@ export function CodeStep({
                   disabled={!file.raw}
                   onClick={() => patchFile(file.id, { raw: '' })}
                 >
-                  Clear
+                  {m.clear}
                 </button>
               </div>
             </div>
             <textarea
               key={file.id}
               className="code-input"
-              aria-label="Code to review"
+              aria-label={m.codeAria}
               spellCheck={false}
               autoCapitalize="off"
               autoCorrect="off"
@@ -567,35 +564,31 @@ export function CodeStep({
               onChange={(e) => patchFile(file.id, { raw: e.target.value })}
               onPaste={onPaste}
               onKeyDown={onTab}
-              placeholder={
-                multi
-                  ? 'Paste this file’s code…'
-                  : 'Paste the code you want to review, or drop a .zip of the project here…'
-              }
+              placeholder={multi ? m.pasteFilePlaceholder : m.pastePlaceholder}
               autoFocus={!file.raw && !multi}
             />
           </section>
 
-          <section className="np-panel pane" aria-label="Formatted code">
+          <section className="np-panel pane" aria-label={m.formattedAria}>
             <div className="np-panel__head">
               <div className="pane__title">
                 <Seg
                   onBg
-                  label="Preview mode"
+                  label={m.previewMode}
                   value={view}
                   onChange={setView}
                   items={[
-                    { id: 'formatted', label: 'Formatted' },
-                    { id: 'diff', label: 'Diff' },
+                    { id: 'formatted', label: m.formatted },
+                    { id: 'diff', label: m.diff },
                   ]}
                 />
                 <span className="np-file__meta">
                   {fmtCode
                     ? view === 'diff'
                       ? changed
-                        ? `${plural(changed, 'line')} changed`
-                        : 'No changes'
-                      : plural(fmtLineArr.length, 'line')
+                        ? m.linesChanged(changed)
+                        : m.noChanges
+                      : t().plural.lines(fmtLineArr.length)
                     : ''}
                 </span>
               </div>
@@ -610,7 +603,7 @@ export function CodeStep({
               <div className="pane-note" role="note">
                 <Icon name="alert" size={14} />
                 <span>
-                  The formatter couldn’t parse this code, so it’s shown as pasted.{' '}
+                  {fm.parseNote}{' '}
                   <span className="pane-note__detail">{result.error}</span>
                 </span>
               </div>
@@ -618,12 +611,9 @@ export function CodeStep({
             {!fmtCode ? (
               <div className="pane-empty">
                 <Icon name="lines" size={28} />
-                <p className="pane-empty__title">Formatted code shows up here</p>
-                <p className="pane-empty__text">
-                  Paste code on the left, or drop a .zip of a whole project. Everything is
-                  re-indented and re-spaced, so you review the logic, not the whitespace.
-                </p>
-                {!multi && !file.raw && uploadButton('Upload a .zip or files', 'np-btn np-btn--secondary')}
+                <p className="pane-empty__title">{m.emptyTitle}</p>
+                <p className="pane-empty__text">{m.emptyText}</p>
+                {!multi && !file.raw && uploadButton(m.uploadAny, 'np-btn np-btn--secondary')}
               </div>
             ) : view === 'formatted' ? (
               <div className="np-code pane-scroll">
@@ -667,12 +657,12 @@ export function CodeStep({
         <div className="action-bar">
           <p className="action-bar__text">
             {tooLong
-              ? `${filePath(tooLong)} is longer than we can review: up to ${LIMITS.lines.toLocaleString()} lines per file.`
+              ? m.tooLong(filePath(tooLong), LIMITS.lines)
               : published
-                ? 'Comments stay on their lines when the code changes. Update the link afterwards so your mentee sees it.'
+                ? m.nextPublished
                 : multi
-                  ? `Next: comment on any of the ${draft.files.length} files, then share one short link.`
-                  : 'Next: comment line by line, then share a short link. No sign-up for you or your mentee.'}
+                  ? m.nextMulti(draft.files.length)
+                  : m.nextSingle}
           </p>
           <button
             type="button"
@@ -680,7 +670,7 @@ export function CodeStep({
             disabled={!hasCode || !!tooLong || !!starting || (!multi && (!result || pending))}
             onClick={start}
           >
-            {starting ?? (published ? 'Back to review' : 'Start review')}
+            {starting ?? (published ? m.backToReview : m.startReview)}
             {!starting && <Icon name="arrow-right" />}
           </button>
         </div>

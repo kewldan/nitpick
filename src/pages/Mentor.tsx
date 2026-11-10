@@ -20,9 +20,10 @@ import {
   toInput,
   type Draft,
 } from '../lib/draft.ts';
-import { formatterLabel, type FormatResult } from '../lib/format.ts';
+import { AS_PASTED, formatterLabel, type FormatResult } from '../lib/format.ts';
 import { navigate, useRefresh, useToast } from '../lib/hooks.tsx';
 import { storage } from '../lib/storage.ts';
+import { t } from '../i18n/index.ts';
 import { CodeStep } from './CodeStep.tsx';
 import { ErrorPage, LoadingPage } from './ErrorPage.tsx';
 import { ReviewStep } from './ReviewStep.tsx';
@@ -171,7 +172,7 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
         return {
           ...f,
           code: r.code,
-          formatter: r.error ? 'As pasted' : formatterLabel(f.language, d.fmt),
+          formatter: r.error ? AS_PASTED : formatterLabel(f.language, d.fmt),
         };
       });
       // A file that lost its code (emptied) takes its comments with it.
@@ -218,7 +219,7 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
         setDialog('updated');
       }
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not publish');
+      toast(err instanceof Error ? err.message : t().mentor.couldNotPublish);
     } finally {
       setBusy(false);
     }
@@ -233,50 +234,51 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
       }));
       return true;
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not send the reply');
+      toast(err instanceof Error ? err.message : t().mentor.couldNotReply);
       return false;
     }
   };
 
   const remove = async () => {
     if (!pub) return;
-    if (!window.confirm('Delete this review? The share link stops working for your mentee.')) return;
+    if (!window.confirm(t().mentor.deleteConfirm)) return;
     try {
       await api.remove(pub.id, pub.key);
       storage.forgetReview(pub.id);
-      toast('Review deleted', 'info');
+      toast(t().mentor.deleted, 'info');
       navigate('/');
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Could not delete the review');
+      toast(err instanceof Error ? err.message : t().mentor.couldNotDelete);
     }
   };
 
   if (load === 'loading') return <LoadingPage />;
   if (typeof load === 'object') {
     const err = load.error;
+    const m = t().mentor;
     if (err === 'nokey') {
       return (
         <ErrorPage
-          title="This edit link is incomplete"
-          text="The private key at the end of the link is missing. Open the full edit link you got when you published, or view the review as your mentee sees it."
-          action={{ label: 'Open mentee view', href: `/${id}` }}
+          title={m.incompleteTitle}
+          text={m.incompleteText}
+          action={{ label: m.openMentee, href: `/${id}` }}
         />
       );
     }
     if (err.status === 403) {
       return (
         <ErrorPage
-          title="This edit link isn’t valid"
-          text="The key doesn’t match this review. Check that you copied the whole link."
-          action={{ label: 'Open mentee view', href: `/${id}` }}
+          title={m.invalidTitle}
+          text={m.invalidText}
+          action={{ label: m.openMentee, href: `/${id}` }}
         />
       );
     }
     return (
       <ErrorPage
-        title={err.expired ? 'This review has expired' : err.status === 404 ? 'Review not found' : 'Something went wrong'}
-        text={err.expired ? 'Its link expired, so the review was removed.' : err.message}
-        action={{ label: 'Start a new review', href: '/' }}
+        title={err.expired ? m.expiredTitle : err.status === 404 ? m.notFoundTitle : m.wentWrong}
+        text={err.expired ? m.expiredText : err.message}
+        action={{ label: m.startNew, href: '/' }}
       />
     );
   }

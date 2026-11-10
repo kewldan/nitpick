@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import { SEVERITIES, type Severity } from '../../shared/types.ts';
-import { lineLabel, SEVERITY } from '../lib/text.ts';
+import { t } from '../i18n/index.ts';
+import { SEVERITY } from '../lib/text.ts';
 import { Icon } from './Icon.tsx';
 
 export interface ComposerValue {
@@ -38,7 +39,9 @@ export function Composer({
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    textRef.current?.focus({ preventScroll: true });
+    const el = textRef.current;
+    el?.focus({ preventScroll: true });
+    el?.setSelectionRange(el.value.length, el.value.length);
     textRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, []);
   useEffect(() => onChange?.(!!text.trim()), [text, onChange]);
@@ -73,14 +76,15 @@ export function Composer({
     // Cmd+Enter and Esc bubble up to the composer's own handler.
   };
 
+  const m = t().composer;
   return (
     <div className="np-composer" onKeyDown={onKey}>
       <div className="np-composer__head">
         <span className="np-label">
-          {editing ? 'Edit · ' : ''}
-          {lineLabel(line, endLine).replace(/^l/, 'L')}
+          {editing ? m.editPrefix : ''}
+          {t().lineTitle(line, endLine)}
         </span>
-        <div role="radiogroup" aria-label="Severity" className="sev-group">
+        <div role="radiogroup" aria-label={m.severityAria} className="sev-group">
           {SEVERITIES.map((s) => (
             <button
               key={s}
@@ -99,21 +103,21 @@ export function Composer({
       <textarea
         ref={textRef}
         className="np-composer__text"
-        aria-label="Comment text"
+        aria-label={m.textAria}
         value={text}
         maxLength={5000}
         onChange={(e) => setText(e.target.value)}
-        placeholder="What should change, and why? Wrap code in backticks."
+        placeholder={m.placeholder}
       />
       {showSug && (
         <div className="composer-sug">
           <div className="composer-sug__head">
             <Icon name="code" size={14} />
-            Suggested code
+            {m.suggestedCode}
           </div>
           <textarea
             className="np-textarea np-textarea--code composer-sug__text"
-            aria-label="Suggested code"
+            aria-label={m.suggestedCode}
             spellCheck={false}
             value={suggestion}
             rows={Math.min(14, Math.max(3, suggestion.split('\n').length + 1))}
@@ -132,14 +136,14 @@ export function Composer({
           }}
         >
           <Icon name="code" />
-          {showSug ? 'Remove suggestion' : 'Suggest code'}
+          {showSug ? m.removeSuggestion : m.suggestCode}
         </button>
         <div className="composer-actions">
           <span className="kbd-hint" aria-hidden="true">
             ⌘↵
           </span>
           <button type="button" className="np-btn np-btn--secondary" onClick={onCancel}>
-            Cancel
+            {t().common.cancel}
           </button>
           <button
             type="button"
@@ -147,7 +151,7 @@ export function Composer({
             disabled={!canSave}
             onClick={save}
           >
-            {editing ? 'Save' : 'Comment'}
+            {editing ? m.save : m.comment}
           </button>
         </div>
       </div>

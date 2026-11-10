@@ -1,5 +1,6 @@
 import { Header } from '../components/Header.tsx';
 import { Icon } from '../components/Icon.tsx';
+import { t } from '../i18n/index.ts';
 import { navigate } from '../lib/hooks.tsx';
 
 export function ErrorPage({
@@ -43,7 +44,7 @@ export function LoadingPage() {
       <Header />
       <main className="container container--narrow">
         <p className="muted loading" role="status">
-          Loading review…
+          {t().common.loading}
         </p>
       </main>
     </div>

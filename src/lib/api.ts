@@ -1,3 +1,4 @@
+import { getLocale, t } from '../i18n/index.ts';
 import type {
   Comment,
   PublishResult,
@@ -22,7 +23,7 @@ async function call<T>(
   body?: unknown,
   key?: string,
 ): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { 'X-Lang': getLocale() };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (key) headers['X-Edit-Key'] = key;
   let res: Response;
@@ -33,7 +34,7 @@ async function call<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, 'No connection. Check your network and try again.');
+    throw new ApiError(0, t().common.noConnection);
   }
   if (res.status === 204) return undefined as T;
   const data = (await res.json().catch(() => ({}))) as {
@@ -43,7 +44,7 @@ async function call<T>(
   if (!res.ok) {
     throw new ApiError(
       res.status,
-      data.error ?? `Request failed (${res.status})`,
+      data.error ?? t().common.requestFailed(res.status),
       !!data.expired,
     );
   }
