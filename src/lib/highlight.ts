@@ -12,6 +12,12 @@ import 'prismjs/components/prism-typescript';
 import 'prismjs/components/prism-rust';
 import 'prismjs/components/prism-kotlin';
 import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-markdown';
+import 'prismjs/components/prism-cmake';
+import 'prismjs/components/prism-makefile';
+import 'prismjs/components/prism-bash';
 
 import { language } from './languages.ts';
 
@@ -49,6 +55,17 @@ const CLASS: Record<string, string> = {
   operator: 'tok-op',
   punctuation: 'tok-op',
   lifetime: 'tok-ty',
+  property: 'tok-fn',
+  key: 'tok-fn',
+  tag: 'tok-kw',
+  'attr-name': 'tok-ty',
+  'attr-value': 'tok-str',
+  selector: 'tok-fn',
+  variable: 'tok-ty',
+  title: 'tok-kw',
+  bold: 'tok-kw',
+  url: 'tok-str',
+  target: 'tok-fn',
 };
 
 function flatten(

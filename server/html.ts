@@ -24,9 +24,11 @@ export function describe(review: Review): { title: string; text: string } {
   ];
   if (blockers.length) parts.push(plural(blockers.length, 'blocker'));
   const by = review.reviewer.trim() ? ` by ${review.reviewer.trim()}` : '';
+  const what =
+    review.files.length === 1 ? review.files[0].path : plural(review.files.length, 'file');
   return {
     title,
-    text: `Review of ${review.fileName || 'code'}${by} · ${parts.join(' · ')}`,
+    text: `Review of ${what}${by} · ${parts.join(' · ')}`,
   };
 }
 

@@ -23,6 +23,14 @@ export const LANGUAGES: Language[] = [
   { id: 'rust', label: 'Rust', ext: 'rs', prism: 'rust', formatter: null },
   { id: 'kotlin', label: 'Kotlin', ext: 'kt', prism: 'kotlin', formatter: null },
   { id: 'sql', label: 'SQL', ext: 'sql', prism: 'sql', formatter: null },
+  { id: 'json', label: 'JSON', ext: 'json', prism: 'json', formatter: 'prettier' },
+  { id: 'yaml', label: 'YAML', ext: 'yml', prism: 'yaml', formatter: null },
+  { id: 'markdown', label: 'Markdown', ext: 'md', prism: 'markdown', formatter: null },
+  { id: 'cmake', label: 'CMake', ext: 'cmake', prism: 'cmake', formatter: null },
+  { id: 'makefile', label: 'Makefile', ext: 'mk', prism: 'makefile', formatter: null },
+  { id: 'bash', label: 'Shell', ext: 'sh', prism: 'bash', formatter: null },
+  { id: 'html', label: 'HTML', ext: 'html', prism: 'markup', formatter: null },
+  { id: 'css', label: 'CSS', ext: 'css', prism: 'css', formatter: null },
   { id: 'text', label: 'Plain text', ext: 'txt', prism: '', formatter: null },
 ];
 
@@ -38,11 +46,26 @@ const BY_EXT: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript', mts: 'typescript',
   js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
   rs: 'rust', kt: 'kotlin', kts: 'kotlin', sql: 'sql', txt: 'text',
+  json: 'json', yml: 'yaml', yaml: 'yaml', md: 'markdown', markdown: 'markdown',
+  cmake: 'cmake', mk: 'makefile', sh: 'bash', bash: 'bash', zsh: 'bash',
+  html: 'html', htm: 'html', xml: 'html', css: 'css', ipp: 'cpp', tpp: 'cpp',
+};
+
+const BY_NAME: Record<string, string> = {
+  'cmakelists.txt': 'cmake',
+  makefile: 'makefile',
+  gnumakefile: 'makefile',
+  dockerfile: 'bash',
+  '.clang-format': 'yaml',
+  '.clang-tidy': 'yaml',
+  '.gitignore': 'text',
 };
 
 export function languageFromFileName(name: string): string | null {
-  const m = /\.([A-Za-z0-9]+)$/.exec(name.trim());
-  return m ? (BY_EXT[m[1].toLowerCase()] ?? null) : null;
+  const base = name.trim().split('/').pop()?.toLowerCase() ?? '';
+  if (BY_NAME[base]) return BY_NAME[base];
+  const m = /\.([A-Za-z0-9]+)$/.exec(base);
+  return m ? (BY_EXT[m[1]] ?? null) : null;
 }
 
 /** A rough guess from the code itself, used when code is pasted. */

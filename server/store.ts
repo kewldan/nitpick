@@ -8,7 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import type { Review } from '../shared/types.ts';
+import { normalizeReview, type Review } from '../shared/types.ts';
 
 const ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -94,7 +94,7 @@ export function openStore(file: string): Store {
 
     get(id) {
       const row = select.get(id) as { doc: string } | undefined;
-      return row ? (JSON.parse(row.doc) as Review) : null;
+      return row ? normalizeReview(JSON.parse(row.doc)) : null;
     },
 
     update(id, fn) {
@@ -105,7 +105,7 @@ export function openStore(file: string): Store {
           db.exec('ROLLBACK');
           return null;
         }
-        const next = fn(JSON.parse(row.doc) as Review);
+        const next = fn(normalizeReview(JSON.parse(row.doc)));
         save.run(
           JSON.stringify(next),
           Date.parse(next.updatedAt),

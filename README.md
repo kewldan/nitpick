@@ -11,6 +11,14 @@ account, works through the comments and ticks them off as they fix things.
   brace placement), Ruff for Python, gofmt for Go, Prettier for TypeScript and
   JavaScript. Rust, Kotlin, SQL and plain text are highlighted and reviewed as
   pasted. A diff view shows what the formatter changed.
+- **Whole projects.** Drop a `.zip` (or several files) on the page, or use
+  "Upload .zip". Build and tool folders (`build/`, `cmake-build-*`, `.git`,
+  `node_modules`, …), binaries and files over 200 KB are left out, and the
+  page lists what was skipped. A file tree shows open comments per file; the
+  mentee starts on the file with the most pressing comment and can download
+  the formatted project as a `.zip`. Uploading a fixed version later keeps
+  comments on their lines in every file that kept its path. Limits: 300
+  files, 5,000 lines per file.
 - **Comment.** Click a line number to comment, Shift-click a second one for a
   range. Five fixed severities (Blocker, Issue, Suggestion, Nit, Praise),
   backticks for inline code, an optional suggested change. Summary and verdict
@@ -77,14 +85,15 @@ Layout:
 - `server/` — Hono API (`app.ts`), SQLite storage (`store.ts`), page meta
   for share links (`html.ts`), production entry (`index.ts`).
 - `shared/` — types and input validation used by both sides.
-- `src/lib/` — formatters, Prism highlighting, line diff, API client, local
-  storage.
+- `src/lib/` — formatters, Prism highlighting, line diff, zip import and
+  export (`zip.ts`), API client, local storage.
 - `src/pages/` — paste (`CodeStep`), review (`ReviewStep`), the mentor flow
   (`Mentor`), the mentee page (`Shared`).
 
 ### Adding a language
 
-Add an entry to `src/lib/languages.ts` (Prism grammar, extension, formatter)
+Add an entry to `src/lib/languages.ts` (Prism grammar, extension or file
+name, formatter)
 and import its Prism grammar in `src/lib/highlight.ts`. If it has a WASM
 formatter, wire it up in `src/lib/format.ts`.
 

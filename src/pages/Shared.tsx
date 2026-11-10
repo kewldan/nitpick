@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import type { Comment, Review } from '../../shared/types.ts';
 import { CodeView, lineClasses } from '../components/CodeView.tsx';
 import { CommentCard } from '../components/CommentCard.tsx';
+import { FileTree, fileStats } from '../components/FileTree.tsx';
 import { Header } from '../components/Header.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Pill, Seg } from '../components/controls.tsx';
@@ -23,7 +24,8 @@ import {
   VERDICT,
 } from '../lib/text.ts';
 import { ErrorPage, LoadingPage } from './ErrorPage.tsx';
-import { scrollToLine } from './ReviewStep.tsx';
+import { scrollToLine, scrollToLineSoon } from './ReviewStep.tsx';
+import { downloadZip } from '../lib/zip.ts';
 import { SEVERITIES } from '../../shared/types.ts';
 
 type Filter = 'all' | 'open' | 'fixed';
@@ -33,6 +35,7 @@ export function Shared({ id }: { id: string }) {
   const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
+  const [path, setPath] = useState<string | null>(null);
   const [mine, setMine] = useState(() => new Set(storage.menteeReplies()));
   const { copied, copy } = useCopy();
   const mentorKey = storage.keyFor(id);
@@ -69,9 +72,24 @@ export function Shared({ id }: { id: string }) {
     if (review && m) requestAnimationFrame(() => scrollToLine(Number(m[1])));
   }, [!!review]);
 
+  // Open the file with the most pressing comment first.
+  const file = useMemo(() => {
+    if (!review) return null;
+    const chosen = path ? review.files.find((f) => f.path === path) : null;
+    if (chosen) return chosen;
+    const open = [...review.comments]
+      .filter((c) => !c.resolved && c.severity !== 'praise')
+      .sort((a, b) => SEVERITY[a.severity].rank - SEVERITY[b.severity].rank)[0];
+    return (
+      (open && review.files.find((f) => f.path === open.file)) ??
+      review.files.find((f) => /(^|\/)main\.[^/]+$/.test(f.path)) ??
+      review.files[0]
+    );
+  }, [review, path]);
+
   const lines = useMemo(
-    () => (review ? highlight(review.code, review.language) : []),
-    [review?.code, review?.language],
+    () => (file ? highlight(file.code, file.language) : []),
+    [file?.code, file?.language],
   );
 
   const replace = (c: Comment) =>
@@ -118,13 +136,18 @@ export function Shared({ id }: { id: string }) {
       />
     );
   }
-  if (!review) return <LoadingPage />;
+  if (!review || !file) return <LoadingPage />;
 
-  const lang = language(review.language);
+  const lang = language(file.language);
+  const multi = review.files.length > 1;
+  const stats = fileStats(review.comments);
+  const openFile = (p: string, line?: number) => {
+    setPath(p);
+    if (line) scrollToLineSoon(line);
+  };
   const all = review.comments;
   const actionable = all.filter((c) => c.severity !== 'praise');
   const fixed = actionable.filter((c) => c.resolved).length;
-  const openN = all.filter((c) => !c.resolved).length;
   const blockersOpen = actionable.filter((c) => c.severity === 'blocker' && !c.resolved).length;
   const pct = actionable.length ? Math.round((fixed / actionable.length) * 100) : 100;
   const byRank = (a: Comment, b: Comment) => SEVERITY[a.severity].rank - SEVERITY[b.severity].rank;
@@ -141,10 +164,11 @@ export function Shared({ id }: { id: string }) {
             : `${blockersOpen} blockers are still open. Start there.`
           : 'Blockers are done. The rest is polish.';
 
-  const visible = all.filter((c) =>
+  const inFile = all.filter((c) => c.file === file.path);
+  const visible = inFile.filter((c) =>
     filter === 'all' ? true : filter === 'open' ? !c.resolved : c.resolved,
   );
-  const classes = lineClasses(lines.length, all);
+  const classes = lineClasses(lines.length, inFile);
   const after = new Map<number, ReactNode>();
   const groups = new Map<number, Comment[]>();
   for (const c of visible) {
@@ -158,7 +182,7 @@ export function Shared({ id }: { id: string }) {
         <CommentCard
           key={c.id}
           comment={c}
-          langId={review.language}
+          langId={file.language}
           mode="mentee"
           reviewer={review.reviewer}
           canResolve={review.allowResolve}
@@ -171,9 +195,13 @@ export function Shared({ id }: { id: string }) {
     );
   }
 
-  const checklist = [...actionable].sort((a, b) => byRank(a, b) || a.line - b.line);
+  const order = new Map(review.files.map((f, i) => [f.path, i]));
+  const checklist = [...actionable].sort(
+    (a, b) => byRank(a, b) || (order.get(a.file) ?? 0) - (order.get(b.file) ?? 0) || a.line - b.line,
+  );
   const verdict = VERDICT[review.verdict];
-  const fileName = review.fileName || `main.${lang.ext}`;
+  const fileName = file.path;
+  const fileOpen = inFile.filter((c) => !c.resolved).length;
   const editHref = mentorKey ? `/e/${id}#key=${mentorKey}` : null;
 
   return (
@@ -214,7 +242,8 @@ export function Shared({ id }: { id: string }) {
             <div className="shared-hero__meta">
               <Pill tone={verdict.badge}>{verdict.label}</Pill>
               <span>
-                {review.reviewer ? `${review.reviewer} reviewed` : 'Review of'} {fileName} · {lang.label}
+                {review.reviewer ? `${review.reviewer} reviewed` : 'Review of'}{' '}
+                {multi ? plural(review.files.length, 'file') : `${fileName} · ${lang.label}`}
               </span>
             </div>
             <h1 id="sh-title" className="t-display shared-hero__title">
@@ -243,7 +272,34 @@ export function Shared({ id }: { id: string }) {
           </div>
         </section>
 
-        <div className="workspace">
+        <div className={`workspace${multi ? ' workspace--tree' : ''}`}>
+          {multi && (
+            <div className="tree-col">
+              <FileTree
+                items={review.files.map((f) => {
+                  const st = stats.get(f.path);
+                  return {
+                    key: f.path,
+                    path: f.path,
+                    count: st?.open,
+                    severity: st?.top,
+                    done: !!st && st.total > 0 && st.open === 0,
+                  };
+                })}
+                selected={file.path}
+                onSelect={(p) => openFile(p)}
+                actions={
+                  <button
+                    type="button"
+                    className="np-btn np-btn--ghost np-btn--sm"
+                    onClick={() => downloadZip(review.title || id, review.files)}
+                  >
+                    Download .zip
+                  </button>
+                }
+              />
+            </div>
+          )}
           <section className="np-panel code-panel" aria-label="Reviewed code">
             <div className="np-panel__head code-panel__head">
               <span className="np-file">
@@ -260,22 +316,22 @@ export function Shared({ id }: { id: string }) {
                   value={filter}
                   onChange={setFilter}
                   items={[
-                    { id: 'all', label: `All ${all.length}` },
-                    { id: 'open', label: `Open ${openN}` },
-                    { id: 'fixed', label: `Fixed ${all.length - openN}` },
+                    { id: 'all', label: `All ${inFile.length}` },
+                    { id: 'open', label: `Open ${fileOpen}` },
+                    { id: 'fixed', label: `Fixed ${inFile.length - fileOpen}` },
                   ]}
                 />
                 <button
                   type="button"
                   className="np-btn np-btn--secondary"
-                  onClick={() => copy(review.code, 'code')}
+                  onClick={() => copy(file.code, 'code')}
                 >
                   <Icon name={copied === 'code' ? 'check' : 'copy'} />
                   {copied === 'code' ? 'Copied' : 'Copy code'}
                 </button>
               </div>
             </div>
-            <CodeView lines={lines} classes={classes} after={after} />
+            <CodeView key={file.path} lines={lines} classes={classes} after={after} />
           </section>
 
           <aside className="sidebar sidebar--narrow" aria-label="Checklist">
@@ -304,7 +360,8 @@ export function Shared({ id }: { id: string }) {
                         <span className="np-check__text">
                           <span className="np-check__meta">
                             <span className="np-dot" style={{ background: `var(--${c.severity})` }} />
-                            {SEVERITY[c.severity].label} · {lineLabel(c.line, c.endLine)}
+                            {SEVERITY[c.severity].label} ·{' '}
+                            {multi ? `${c.file.split('/').pop()}:${c.line}` : lineLabel(c.line, c.endLine)}
                           </span>
                           <span className="np-check__label">{excerpt(c.text)}</span>
                         </span>
@@ -312,14 +369,13 @@ export function Shared({ id }: { id: string }) {
                       <a
                         href={`#line-${c.line}`}
                         className="np-btn np-btn--icon checklist__jump"
-                        aria-label={`Show ${lineLabel(c.line, c.endLine)} in the code`}
+                        aria-label={`Show ${c.file} ${lineLabel(c.line, c.endLine)} in the code`}
                         title="Show in code"
                         onClick={(e) => {
                           e.preventDefault();
                           if (filter === 'fixed' && !c.resolved) setFilter('all');
                           if (filter === 'open' && c.resolved) setFilter('all');
-                          history.replaceState(null, '', `#line-${c.line}`);
-                          requestAnimationFrame(() => scrollToLine(c.line));
+                          openFile(c.file, c.line);
                         }}
                       >
                         <Icon name="arrow-right" size={14} />

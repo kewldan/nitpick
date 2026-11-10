@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Code review for mentors: paste, format, comment, share one short link.",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -26,6 +28,7 @@
     "@wasm-fmt/clang-format": "23.1.1",
     "@wasm-fmt/gofmt": "0.7.3",
     "@wasm-fmt/ruff_fmt": "0.15.20",
+    "fflate": "0.8.3",
     "prettier": "3.9.10",
     "prismjs": "1.30.0",
     "react": "19.3.1",

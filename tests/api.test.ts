@@ -22,11 +22,16 @@ function setup() {
 
 const input = (over: Record<string, unknown> = {}) => ({
   title: 'HW 1',
-  language: 'cpp',
-  fileName: 'main.cpp',
-  code: 'int a;\nint b;\nint c;',
-  original: 'int a;int b;int c;',
-  formatter: 'clang-format · Google',
+  files: [
+    {
+      path: 'src/main.cpp',
+      language: 'cpp',
+      code: 'int a;\nint b;\nint c;',
+      original: 'int a;int b;int c;',
+      formatter: 'clang-format · Google',
+    },
+    { path: 'CMakeLists.txt', language: 'cmake', code: 'project(x)', original: 'project(x)', formatter: '' },
+  ],
   summary: '',
   verdict: 'changes',
   reviewer: 'Daniel',
@@ -34,8 +39,8 @@ const input = (over: Record<string, unknown> = {}) => ({
   allowResolve: true,
   allowReplies: true,
   comments: [
-    { id: 'c1', line: 1, endLine: 1, severity: 'blocker', text: 'Leak', suggestion: '' },
-    { id: 'c2', line: 2, endLine: 3, severity: 'praise', text: 'Nice', suggestion: '' },
+    { id: 'c1', file: 'src/main.cpp', line: 1, endLine: 1, severity: 'blocker', text: 'Leak', suggestion: '' },
+    { id: 'c2', file: 'src/main.cpp', line: 2, endLine: 3, severity: 'praise', text: 'Nice', suggestion: '' },
   ],
   ...over,
 });
@@ -59,7 +64,7 @@ test('publish, read, resolve, reply, update keeps mentee state', async () => {
   assert.deepEqual(thread.replies.map((r) => r.author), ['mentee', 'mentor']);
 
   const upd = await req('PUT', `/api/reviews/${id}`, input({ title: 'HW 1 v2', comments: [
-    { id: 'c1', line: 2, endLine: 2, severity: 'issue', text: 'Leak!', suggestion: '' },
+    { id: 'c1', file: 'src/main.cpp', line: 2, endLine: 2, severity: 'issue', text: 'Leak!', suggestion: '' },
   ] }), editKey);
   assert.equal(upd.status, 200);
   const review = (await (await req('GET', `/api/reviews/${id}`)).json()) as {
@@ -94,10 +99,57 @@ test('switches turn off mentee writes', async () => {
 
 test('validation rejects comments outside the code', async () => {
   const { req } = setup();
-  const res = await req('POST', '/api/reviews', input({
-    comments: [{ id: 'x', line: 9, endLine: 9, severity: 'issue', text: 'a', suggestion: '' }],
+  const past = await req('POST', '/api/reviews', input({
+    comments: [{ id: 'x', file: 'src/main.cpp', line: 9, endLine: 9, severity: 'issue', text: 'a', suggestion: '' }],
   }));
-  assert.equal(res.status, 400);
+  assert.equal(past.status, 400);
+  const ghost = await req('POST', '/api/reviews', input({
+    comments: [{ id: 'x', file: 'nope.cpp', line: 1, endLine: 1, severity: 'issue', text: 'a', suggestion: '' }],
+  }));
+  assert.equal(ghost.status, 400);
+});
+
+test('validation rejects bad and duplicate paths', async () => {
+  const { req } = setup();
+  const file = { language: 'cpp', code: 'x', original: 'x', formatter: '' };
+  for (const files of [
+    [{ ...file, path: '../etc/passwd' }],
+    [{ ...file, path: '/abs.cpp' }],
+    [{ ...file, path: 'a.cpp' }, { ...file, path: 'a.cpp' }],
+    [],
+  ]) {
+    const res = await req('POST', '/api/reviews', input({ files, comments: [] }));
+    assert.equal(res.status, 400, JSON.stringify(files));
+  }
+});
+
+test('single-file reviews stored before projects still load', async () => {
+  const { store, req } = setup();
+  const { id } = store.create({
+    title: 'Old',
+    language: 'cpp',
+    fileName: 'main.cpp',
+    code: 'int a;',
+    original: 'int a;',
+    formatter: 'clang-format · Google',
+    summary: '',
+    verdict: 'changes',
+    reviewer: '',
+    expiry: 'never',
+    allowResolve: true,
+    allowReplies: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    expiresAt: null,
+    comments: [{ id: 'c1', line: 1, endLine: 1, severity: 'nit', text: 'x', suggestion: '', resolved: false, replies: [] }],
+  } as never);
+  const review = (await (await req('GET', `/api/reviews/${id}`)).json()) as {
+    files: { path: string; code: string }[];
+    comments: { file: string }[];
+  };
+  assert.deepEqual(review.files.map((f) => f.path), ['main.cpp']);
+  assert.equal(review.files[0].code, 'int a;');
+  assert.equal(review.comments[0].file, 'main.cpp');
 });
 
 test('expired reviews answer 410 and are purged', async () => {

@@ -11,8 +11,11 @@ import { ApiError, api } from '../lib/api.ts';
 import { lineMap } from '../lib/diff.ts';
 import {
   emptyDraft,
+  filePath,
   fingerprint,
   fromReview,
+  isStarted,
+  normalizeDraft,
   rememberPrefs,
   toInput,
   type Draft,
@@ -44,8 +47,9 @@ function sameState(a: Review['comments'][number], b: Review['comments'][number])
 export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
   const toast = useToast();
   const [draft, setDraft] = useState<Draft>(() =>
-    id ? emptyDraft() : (storage.draft<Draft>() ?? emptyDraft()),
+    id ? emptyDraft() : (normalizeDraft(storage.draft()) ?? emptyDraft()),
   );
+  const [fileId, setFileId] = useState('');
   const [pub, setPub] = useState<Pub | null>(null);
   const [saved, setSaved] = useState('');
   const [load, setLoad] = useState<Load>(id ? 'loading' : 'ready');
@@ -63,7 +67,7 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
     if (!id) {
       if (pub) {
         setPub(null);
-        setDraft(storage.draft<Draft>() ?? emptyDraft());
+        setDraft(normalizeDraft(storage.draft()) ?? emptyDraft());
         setLoad('ready');
       }
       return;
@@ -144,26 +148,36 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
 
   // Nothing to comment on yet: go back to the paste screen.
   useEffect(() => {
-    if (load === 'ready' && screen === 'review' && !draft.code) goto('code', true);
+    if (load === 'ready' && screen === 'review' && !isStarted(draft)) goto('code', true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load, screen, draft.code]);
+  }, [load, screen, isStarted(draft)]);
 
-  const start = (r: FormatResult) => {
+  /** Applies freshly formatted code and keeps comments on their lines. */
+  const start = (results: Map<string, FormatResult>) => {
     setDraft((d) => {
       let comments = d.comments;
-      if (d.code && d.code !== r.code) {
-        const map = lineMap(d.code, r.code);
-        comments = comments.map((c) => {
-          const line = map(c.line);
-          return { ...c, line, endLine: Math.max(line, map(c.endLine)) };
-        });
-      }
-      const next = {
-        ...d,
-        code: r.code,
-        formatter: r.error ? 'As pasted' : formatterLabel(d.language, d.fmt),
-        comments,
-      };
+      const files = d.files.map((f) => {
+        const r = results.get(f.id);
+        if (!r) return { ...f, code: '', formatter: '' };
+        if (f.code && f.code !== r.code) {
+          const map = lineMap(f.code, r.code);
+          const path = filePath(f);
+          comments = comments.map((c) => {
+            if (c.file !== path) return c;
+            const line = map(c.line);
+            return { ...c, line, endLine: Math.max(line, map(c.endLine)) };
+          });
+        }
+        return {
+          ...f,
+          code: r.code,
+          formatter: r.error ? 'As pasted' : formatterLabel(f.language, d.fmt),
+        };
+      });
+      // A file that lost its code (emptied) takes its comments with it.
+      const live = new Set(files.filter((f) => f.code.trim()).map(filePath));
+      comments = comments.filter((c) => live.has(c.file));
+      const next = { ...d, files, comments };
       rememberPrefs(next);
       return next;
     });
@@ -171,7 +185,7 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
   };
 
   const publish = async () => {
-    if (!draft.code || busy) return;
+    if (!isStarted(draft) || busy) return;
     const input = toInput(draft);
     setBusy(true);
     try {
@@ -185,7 +199,7 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
         });
         storage.clearDraft();
         rememberPrefs(draft);
-        setSaved(JSON.stringify(input));
+        setSaved(fingerprint(draft));
         setPub({ id: res.id, key: res.editKey, expiresAt: res.review.expiresAt });
         setDialog('published');
         navigate(`/e/${res.id}#key=${res.editKey}`, { replace: true });
@@ -198,7 +212,7 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
           createdAt: review.createdAt,
         });
         rememberPrefs(draft);
-        setSaved(JSON.stringify(input));
+        setSaved(fingerprint(draft));
         setPub({ ...pub, expiresAt: review.expiresAt });
         pullMenteeState();
         setDialog('updated');
@@ -284,6 +298,8 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
       <CodeStep
         draft={draft}
         patch={patch}
+        selectedId={fileId}
+        onSelect={setFileId}
         onStart={start}
         published={!!pub}
         footer={!pub && <ReviewsList />}
@@ -295,6 +311,8 @@ export function Mentor({ id, screen }: { id?: string; screen: Screen }) {
       <ReviewStep
         draft={draft}
         patch={patch}
+        selectedId={fileId}
+        onSelect={setFileId}
         status={status}
         busy={busy}
         expiresAt={pub?.expiresAt ?? null}

@@ -4,22 +4,31 @@ import type {
   Comment,
   Expiry,
   Review,
+  ReviewFile,
   ReviewInput,
   Verdict,
 } from '../../shared/types.ts';
 import { DEFAULT_FORMAT, type FormatOptions } from './format.ts';
 import { language } from './languages.ts';
 import { storage } from './storage.ts';
+import { shortId } from './text.ts';
 
-export interface Draft {
-  title: string;
+export interface DraftFile {
+  /** Local id, stable across renames. */
+  id: string;
+  /** Path in the project; empty for a single pasted file not yet named. */
+  path: string;
   language: string;
-  fileName: string;
-  /** What the mentor pasted. */
+  /** What the mentor pasted or uploaded. */
   raw: string;
   /** The formatted code being reviewed; empty until "Start review". */
   code: string;
   formatter: string;
+}
+
+export interface Draft {
+  title: string;
+  files: DraftFile[];
   fmt: FormatOptions;
   summary: string;
   verdict: Verdict;
@@ -54,25 +63,26 @@ export function prefs(): Prefs {
 
 /** Remembers the choices a mentor makes the same way every time. */
 export function rememberPrefs(d: Draft) {
+  const single = d.files.length === 1 ? d.files[0].language : undefined;
   storage.savePrefs({
-    language: d.language,
+    ...(single ? { language: single } : {}),
     fmt: d.fmt,
     reviewer: d.reviewer,
     expiry: d.expiry,
     allowResolve: d.allowResolve,
     allowReplies: d.allowReplies,
-  } satisfies Prefs);
+  } satisfies Partial<Prefs>);
+}
+
+export function newFile(langId: string, path = '', raw = ''): DraftFile {
+  return { id: shortId(), path, language: langId, raw, code: '', formatter: '' };
 }
 
 export function emptyDraft(): Draft {
   const p = prefs();
   return {
     title: '',
-    language: p.language,
-    fileName: '',
-    raw: '',
-    code: '',
-    formatter: '',
+    files: [newFile(p.language)],
     fmt: p.fmt,
     summary: '',
     verdict: 'changes',
@@ -88,39 +98,84 @@ export function defaultFileName(langId: string) {
   return `main.${language(langId).ext}`;
 }
 
+/** The path a file is published under. */
+export function filePath(f: DraftFile): string {
+  return f.path.trim() || defaultFileName(f.language);
+}
+
+/** True once "Start review" has produced code to comment on. */
+export function isStarted(d: Draft): boolean {
+  return d.files.some((f) => f.code.trim());
+}
+
+/** Upgrades a draft saved before multi-file support. */
+export function normalizeDraft(raw: unknown): Draft | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const d = raw as Draft & { raw?: string; code?: string; language?: string; fileName?: string; formatter?: string };
+  if (Array.isArray(d.files)) return d;
+  const file: DraftFile = {
+    ...newFile(d.language ?? 'cpp', d.fileName ?? '', d.raw ?? ''),
+    code: d.code ?? '',
+    formatter: d.formatter ?? '',
+  };
+  const { raw: _r, code: _c, language: _l, fileName: _f, formatter: _fm, ...rest } = d;
+  const path = filePath(file);
+  return {
+    ...rest,
+    files: [file],
+    comments: (d.comments ?? []).map((c) => ({ ...c, file: c.file ?? path })),
+  };
+}
+
+function inputFiles(files: DraftFile[]): ReviewFile[] {
+  return files
+    .filter((f) => f.code.trim())
+    .map((f) => ({
+      path: filePath(f),
+      language: f.language,
+      code: f.code,
+      original: f.raw,
+      formatter: f.formatter,
+    }));
+}
+
 export function toInput(d: Draft): ReviewInput {
+  const files = inputFiles(d.files);
+  const paths = new Set(files.map((f) => f.path));
   return {
     title: d.title.trim(),
-    language: d.language,
-    fileName: d.fileName.trim() || defaultFileName(d.language),
-    code: d.code,
-    original: d.raw,
-    formatter: d.formatter,
+    files,
     summary: d.summary.trim(),
     verdict: d.verdict,
     reviewer: d.reviewer.trim(),
     expiry: d.expiry,
     allowResolve: d.allowResolve,
     allowReplies: d.allowReplies,
-    comments: d.comments.map(({ id, line, endLine, severity, text, suggestion }) => ({
-      id,
-      line,
-      endLine,
-      severity,
-      text,
-      suggestion,
-    })),
+    comments: d.comments
+      .filter((c) => paths.has(c.file))
+      .map(({ id, file, line, endLine, severity, text, suggestion }) => ({
+        id,
+        file,
+        line,
+        endLine,
+        severity,
+        text,
+        suggestion,
+      })),
   };
 }
 
 export function fromReview(r: Review): Draft {
   return {
     title: r.title,
-    language: r.language,
-    fileName: r.fileName,
-    raw: r.original || r.code,
-    code: r.code,
-    formatter: r.formatter,
+    files: r.files.map((f) => ({
+      id: shortId(),
+      path: f.path,
+      language: f.language,
+      raw: f.original || f.code,
+      code: f.code,
+      formatter: f.formatter,
+    })),
     fmt: prefs().fmt,
     summary: r.summary,
     verdict: r.verdict,
@@ -132,9 +187,18 @@ export function fromReview(r: Review): Draft {
   };
 }
 
+// The files part is large; cache its serialization per files array.
+const filesPrint = new WeakMap<DraftFile[], string>();
+
 /** A stable fingerprint of what would be published, to detect unsaved edits. */
 export function fingerprint(d: Draft): string {
-  return JSON.stringify(toInput(d));
+  let fp = filesPrint.get(d.files);
+  if (fp === undefined) {
+    fp = JSON.stringify(inputFiles(d.files));
+    filesPrint.set(d.files, fp);
+  }
+  const { files: _files, ...rest } = toInput(d);
+  return `${fp}|${JSON.stringify(rest)}`;
 }
 
 export const SAMPLES: Record<string, string> = {

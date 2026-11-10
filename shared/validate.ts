@@ -8,6 +8,7 @@ import {
   VERDICTS,
   type CommentInput,
   type Expiry,
+  type ReviewFile,
   type ReviewInput,
   type Severity,
   type Verdict,
@@ -44,17 +45,57 @@ function int(v: unknown, field: string, min: number, max: number): number {
 }
 
 const ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
+// Relative, forward slashes, no empty or dot segments, no control characters.
+const PATH_RE = /^(?!\/)(?!.*\/\/)(?!.*(^|\/)\.{1,2}(\/|$))[^\u0000-\u001f\\]+(?<!\/)$/;
+
+function validateFiles(raw: unknown): ReviewFile[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw new ValidationError('Add at least one file');
+  }
+  if (raw.length > LIMITS.files) {
+    throw new ValidationError(`Too many files (max ${LIMITS.files})`);
+  }
+  const seen = new Set<string>();
+  let total = 0;
+  const files = raw.map((f, i): ReviewFile => {
+    if (!f || typeof f !== 'object') {
+      throw new ValidationError(`File ${i + 1} is malformed`);
+    }
+    const o = f as Record<string, unknown>;
+    const path = str(o.path, 'File path', LIMITS.path, true);
+    if (!PATH_RE.test(path)) throw new ValidationError(`Bad file path: ${path}`);
+    if (seen.has(path)) throw new ValidationError(`Duplicate file: ${path}`);
+    seen.add(path);
+    const code = str(o.code, `${path}`, LIMITS.code);
+    if (code.split('\n').length > LIMITS.lines) {
+      throw new ValidationError(`${path} is too long (max ${LIMITS.lines} lines)`);
+    }
+    const original = str(o.original, `${path} (original)`, LIMITS.code);
+    total += code.length + original.length;
+    return {
+      path,
+      language: str(o.language, 'Language', 32, true),
+      code,
+      original,
+      formatter: str(o.formatter, 'Formatter', 80),
+    };
+  });
+  if (total > LIMITS.totalCode) {
+    throw new ValidationError('The project is too large to review in one go');
+  }
+  if (files.every((f) => !f.code.trim())) {
+    throw new ValidationError('There is no code to review');
+  }
+  return files;
+}
 
 export function validateReviewInput(body: unknown): ReviewInput {
   if (!body || typeof body !== 'object') {
     throw new ValidationError('Expected a JSON object');
   }
   const b = body as Record<string, unknown>;
-  const code = str(b.code, 'Code', LIMITS.code, true);
-  const lineCount = code.split('\n').length;
-  if (lineCount > LIMITS.lines) {
-    throw new ValidationError(`Code is too long (max ${LIMITS.lines} lines)`);
-  }
+  const files = validateFiles(b.files);
+  const lineCount = new Map(files.map((f) => [f.path, f.code.split('\n').length]));
   if (!Array.isArray(b.comments)) {
     throw new ValidationError('comments must be a list');
   }
@@ -71,10 +112,15 @@ export function validateReviewInput(body: unknown): ReviewInput {
       throw new ValidationError(`Comment ${i + 1} has a bad id`);
     }
     seen.add(c.id);
-    const line = int(c.line, 'Comment line', 1, lineCount);
-    const endLine = int(c.endLine ?? line, 'Comment end line', line, lineCount);
+    const lines = typeof c.file === 'string' ? lineCount.get(c.file) : undefined;
+    if (lines === undefined) {
+      throw new ValidationError(`Comment ${i + 1} is on a file that isn’t in the review`);
+    }
+    const line = int(c.line, 'Comment line', 1, lines);
+    const endLine = int(c.endLine ?? line, 'Comment end line', line, lines);
     return {
       id: c.id,
+      file: c.file as string,
       line,
       endLine,
       severity: oneOf<Severity>(c.severity, SEVERITIES, 'Severity'),
@@ -84,11 +130,7 @@ export function validateReviewInput(body: unknown): ReviewInput {
   });
   return {
     title: str(b.title, 'Title', LIMITS.title),
-    language: str(b.language, 'Language', 32, true),
-    fileName: str(b.fileName, 'File name', LIMITS.fileName),
-    code,
-    original: str(b.original, 'Original code', LIMITS.code),
-    formatter: str(b.formatter, 'Formatter', 80),
+    files,
     summary: str(b.summary, 'Summary', LIMITS.summary),
     verdict: oneOf<Verdict>(b.verdict, VERDICTS, 'Verdict'),
     reviewer: str(b.reviewer, 'Name', LIMITS.reviewer),

@@ -235,6 +235,70 @@ kbd { font: 400 11px/16px var(--font-mono); padding: 0 4px; border: 1px solid va
 }
 .np-toast[data-tone="error"] { border-color: var(--blocker); }
 
+/* ---------- Projects: file tree, import, drop zone ---------- */
+.code-split--tree > .tree { flex: 0 0 240px; align-self: stretch; max-height: 660px; }
+.code-split--tree > .pane { flex-basis: 380px; }
+.workspace--tree .tree-col { flex: 0 0 240px; min-width: 0; position: sticky; top: calc(var(--header-height) + var(--space-16)); }
+.workspace--tree .tree-col .tree { max-height: calc(100vh - var(--header-height) - var(--space-32)); }
+.workspace--tree .code-panel { flex-basis: 520px; }
+.tree { display: flex; flex-direction: column; }
+.tree__head { padding-right: var(--space-6); flex: 0 0 auto; }
+.tree__actions { display: inline-flex; align-items: center; gap: var(--space-2); }
+.tree__actions .np-btn--icon { width: var(--control-sm); height: var(--control-sm); }
+.tree__list { list-style: none; margin: 0; padding: var(--space-6) var(--space-4); overflow: auto; flex: 1 1 auto; scrollbar-width: thin; }
+.tree__row { display: flex; align-items: center; }
+.tree__dir, .tree__file {
+  display: flex; align-items: center; gap: var(--space-6); width: 100%; min-height: var(--control-sm);
+  padding: 0 var(--space-8); border: 0; border-radius: var(--radius-sm); background: transparent;
+  font: 400 12.5px/18px var(--font-mono); text-align: left; cursor: pointer; min-width: 0;
+}
+.tree__dir { color: var(--text-faint); }
+.tree__dir:hover { color: var(--text); }
+.tree__chev { display: inline-flex; transition: transform 120ms ease-out; }
+.tree__dir[aria-expanded="false"] .tree__chev { transform: rotate(-90deg); }
+.tree__file { flex: 1 1 auto; color: var(--text-secondary); }
+.tree__file:hover { background: var(--surface-2); color: var(--text); }
+.tree__file[aria-current="true"] { background: var(--accent-soft); color: var(--accent-text); box-shadow: inset 2px 0 0 var(--accent); }
+.tree__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree__count { display: inline-flex; align-items: center; gap: var(--space-4); font: 500 11.5px/16px var(--font-mono); }
+.tree__done { display: inline-flex; color: var(--praise-text); }
+.tree__warn { display: inline-flex; color: var(--issue-text); }
+.tree__remove { flex: 0 0 auto; width: 24px; height: 24px; opacity: 0; }
+.tree__row:hover .tree__remove, .tree__remove:focus-visible { opacity: 1; }
+@media (hover: none) { .tree__remove { opacity: 1; } }
+
+.jump-group { display: contents; }
+.jump__file { display: block; margin: var(--space-8) var(--space-8) var(--space-2); font-size: 11.5px; color: var(--text-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jump[aria-current="true"] .jump__line { color: var(--accent-text); }
+
+.import-note {
+  display: flex; align-items: flex-start; gap: var(--space-10); padding: var(--space-10) var(--space-8) var(--space-10) var(--space-14);
+  background: var(--surface-1); border: 1px solid var(--border-subtle); border-radius: var(--radius-xl);
+  color: var(--text-secondary); font-size: 13px; line-height: 18px;
+}
+.import-note > svg { margin-top: 9px; color: var(--praise); flex: 0 0 auto; }
+.import-note p { padding-top: 7px; }
+.import-note details { margin-top: var(--space-6); color: var(--text-muted); }
+.import-note summary { cursor: pointer; font-size: 12.5px; }
+.import-note__list { margin: var(--space-6) 0 0; padding-left: var(--space-16); max-height: 200px; overflow: auto; font-size: 12px; }
+
+.drop-overlay {
+  position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; align-items: center; justify-content: center;
+  background: var(--overlay); pointer-events: none;
+}
+.drop-overlay__box {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-10); padding: var(--space-32) var(--space-40);
+  border: 2px dashed var(--accent); border-radius: var(--radius-2xl); background: var(--surface-1);
+  color: var(--text); font-weight: 500;
+}
+.drop-overlay__box svg { color: var(--accent-text); }
+.pane-empty .np-btn { margin-top: var(--space-6); }
+
+@media (max-width: 720px) {
+  .code-split--tree > .tree, .workspace--tree .tree-col { flex-basis: 100%; position: static; }
+  .code-split--tree > .tree, .workspace--tree .tree-col .tree { max-height: 260px; }
+}
+
 /* ---------- Phones ---------- */
 @media (max-width: 720px) {
   .app-header { padding: var(--space-8) var(--space-16); position: static; }

@@ -135,7 +135,8 @@ function load(id: FormatterId): Promise<Fn> {
         // Prettier is async; this formatter is wrapped below.
         const fn = (code: string, langId: string, o: FormatOptions) =>
           prettier.format(code, {
-            parser: langId === 'typescript' ? 'typescript' : 'babel',
+            parser:
+              langId === 'typescript' ? 'typescript' : langId === 'json' ? 'json' : 'babel',
             plugins: [ts.default ?? ts, estree.default ?? estree, babel.default ?? babel],
             tabWidth: indentFor('prettier', o),
           });

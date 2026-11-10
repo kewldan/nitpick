@@ -123,7 +123,7 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
   app.use(
     '/api/*',
     bodyLimit({
-      maxSize: 1024 * 1024,
+      maxSize: 12 * 1024 * 1024,
       onError: (c) => c.json({ error: 'Request is too large' }, 413),
     }),
   );

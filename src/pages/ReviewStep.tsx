@@ -1,15 +1,16 @@
 // Step 2: comment line by line, write the summary, set up the share link.
 
-import { useCallback, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 
 import { EXPIRIES, LIMITS, SEVERITIES, VERDICTS, type Comment } from '../../shared/types.ts';
 import { CodeView, lineClasses } from '../components/CodeView.tsx';
 import { CommentCard } from '../components/CommentCard.tsx';
 import { Composer, type ComposerValue } from '../components/Composer.tsx';
+import { FileTree, fileStats } from '../components/FileTree.tsx';
 import { Header } from '../components/Header.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { Seg, Steps, Switch } from '../components/controls.tsx';
-import { defaultFileName, type Draft } from '../lib/draft.ts';
+import { filePath, type Draft } from '../lib/draft.ts';
 import { highlight } from '../lib/highlight.ts';
 import { language } from '../lib/languages.ts';
 import {
@@ -36,9 +37,16 @@ export function scrollToLine(n: number) {
   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+/** Scrolls after the next render, for jumps that also switch files. */
+export function scrollToLineSoon(n: number) {
+  requestAnimationFrame(() => requestAnimationFrame(() => scrollToLine(n)));
+}
+
 export function ReviewStep({
   draft,
   patch,
+  selectedId,
+  onSelect,
   status,
   busy,
   expiresAt,
@@ -50,6 +58,8 @@ export function ReviewStep({
 }: {
   draft: Draft;
   patch: (p: Partial<Draft> | ((d: Draft) => Partial<Draft>)) => void;
+  selectedId: string;
+  onSelect: (id: string) => void;
   status: Status;
   busy: boolean;
   expiresAt: string | null;
@@ -61,10 +71,31 @@ export function ReviewStep({
 }) {
   const [cmp, setCmp] = useState<Cmp | null>(null);
   const [cmpHasText, setCmpHasText] = useState(false);
-  const lang = language(draft.language);
-  const codeLines = useMemo(() => draft.code.split('\n'), [draft.code]);
-  const hl = useMemo(() => highlight(draft.code, draft.language), [draft.code, draft.language]);
-  const fileName = draft.fileName.trim() || defaultFileName(draft.language);
+  const files = useMemo(() => draft.files.filter((f) => f.code.trim()), [draft.files]);
+  const file = files.find((f) => f.id === selectedId) ?? files[0];
+  const multi = files.length > 1;
+  const fileName = filePath(file);
+  const lang = language(file.language);
+  const codeLines = useMemo(() => file.code.split('\n'), [file.code]);
+  const hl = useMemo(() => highlight(file.code, file.language), [file.code, file.language]);
+  const fileComments = useMemo(
+    () => draft.comments.filter((c) => c.file === fileName),
+    [draft.comments, fileName],
+  );
+  const stats = useMemo(() => fileStats(draft.comments), [draft.comments]);
+
+  // A composer belongs to one file; switching files closes it.
+  useEffect(() => {
+    setCmp(null);
+    setCmpHasText(false);
+  }, [file.id]);
+
+  const openFile = (id: string, line?: number) => {
+    if (id !== file.id && cmpHasText && !window.confirm('Discard the comment you’re writing?')) return;
+    onSelect(id);
+    if (line) scrollToLineSoon(line);
+  };
+  const idByPath = new Map(files.map((f) => [filePath(f), f.id]));
 
   const byRank = (a: Comment, b: Comment) =>
     SEVERITY[a.severity].rank - SEVERITY[b.severity].rank;
@@ -94,6 +125,7 @@ export function ReviewStep({
             ...d.comments,
             {
               id: shortId(),
+              file: fileName,
               line: cmp.line,
               endLine: cmp.endLine,
               ...v,
@@ -115,14 +147,14 @@ export function ReviewStep({
   };
 
   const classes = useMemo(
-    () => lineClasses(codeLines.length, draft.comments, cmp),
-    [codeLines.length, draft.comments, cmp],
+    () => lineClasses(codeLines.length, fileComments, cmp),
+    [codeLines.length, fileComments, cmp],
   );
 
   const after = useMemo(() => {
     const m = new Map<number, ReactNode>();
     const groups = new Map<number, Comment[]>();
-    for (const c of draft.comments) {
+    for (const c of fileComments) {
       if (cmp?.editId === c.id) continue;
       const end = Math.min(c.endLine, codeLines.length);
       groups.set(end, [...(groups.get(end) ?? []), c]);
@@ -134,7 +166,7 @@ export function ReviewStep({
           <CommentCard
             key={c.id}
             comment={c}
-            langId={draft.language}
+            langId={file.language}
             mode="mentor"
             reviewer={draft.reviewer}
             onEdit={() => {
@@ -178,13 +210,17 @@ export function ReviewStep({
     }
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft.comments, draft.language, draft.reviewer, cmp, codeLines, status, onReply]);
+  }, [fileComments, draft.comments, file.language, draft.reviewer, cmp, codeLines, status, onReply]);
 
   const counts = SEVERITIES.map((s) => ({
     s,
     n: draft.comments.filter((c) => c.severity === s).length,
   }));
-  const index = [...draft.comments].sort((a, b) => a.line - b.line || byRank(a, b));
+  const order = new Map(files.map((f, i) => [filePath(f), i]));
+  const index = [...draft.comments].sort(
+    (a, b) =>
+      (order.get(a.file) ?? 0) - (order.get(b.file) ?? 0) || a.line - b.line || byRank(a, b),
+  );
   const menteeReplies = draft.comments.reduce(
     (n, c) => n + c.replies.filter((r) => r.author === 'mentee').length,
     0,
@@ -232,7 +268,28 @@ export function ReviewStep({
           </>
         }
       />
-      <div className="container container--wide workspace">
+      <div className={`container container--wide workspace${multi ? ' workspace--tree' : ''}`}>
+        {multi && (
+          <div className="tree-col">
+            <FileTree
+              items={files.map((f) => {
+                const st = stats.get(filePath(f));
+                return {
+                  key: f.id,
+                  path: filePath(f),
+                  count: st?.open,
+                  severity: st?.top,
+                  done: !!st && st.total > 0 && st.open === 0 && status !== 'draft',
+                  warn: f.formatter === 'As pasted' && language(f.language).formatter
+                    ? 'The formatter couldn’t parse this file'
+                    : undefined,
+                };
+              })}
+              selected={file.id}
+              onSelect={(id) => openFile(id)}
+            />
+          </div>
+        )}
         <section className="np-panel code-panel" aria-label="Code under review">
           <div className="np-panel__head code-panel__head">
             <span className="np-file">
@@ -240,12 +297,12 @@ export function ReviewStep({
               <span className="np-file__name">{fileName}</span>
               <span className="np-file__meta">
                 {lang.label} · {plural(codeLines.length, 'line')}
-                {draft.formatter ? ` · ${draft.formatter}` : ''}
+                {file.formatter ? ` · ${file.formatter}` : ''}
               </span>
             </span>
             <span className="hint">Click a line number to comment · Shift-click for a range</span>
           </div>
-          <CodeView lines={hl} classes={classes} after={after} onNum={onNum} />
+          <CodeView key={file.id} lines={hl} classes={classes} after={after} onNum={onNum} />
         </section>
 
         <aside className="sidebar" aria-label="Review settings">
@@ -304,15 +361,21 @@ export function ReviewStep({
               <p className="muted">No comments yet. Click any line number in the code to leave one.</p>
             ) : (
               <nav aria-label="Jump to comment" className="jump-list">
-                {index.map((c) => (
+                {index.map((c, i) => (
+                  <div key={c.id} className="jump-group">
+                  {multi && index[i - 1]?.file !== c.file && (
+                    <span className="jump__file mono">{c.file}</span>
+                  )}
                   <a
-                    key={c.id}
                     href={`#line-${c.line}`}
                     className="jump"
                     data-resolved={c.resolved || undefined}
+                    aria-current={c.file === fileName && multi ? 'true' : undefined}
                     onClick={(e) => {
                       e.preventDefault();
-                      scrollToLine(c.line);
+                      const id = idByPath.get(c.file);
+                      if (id && id !== file.id) openFile(id, c.line);
+                      else scrollToLine(c.line);
                     }}
                   >
                     <span className="jump__line">{c.endLine > c.line ? `${c.line}–${c.endLine}` : `L${c.line}`}</span>
@@ -324,6 +387,7 @@ export function ReviewStep({
                       </span>
                     )}
                   </a>
+                  </div>
                 ))}
               </nav>
             )}
