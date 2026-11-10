@@ -1,0 +1,34 @@
+# Production stack on the server, behind the shared Traefik
+# (network "virtual-hosts", certificates from the "myresolver" resolver).
+# deploy.sh fetches this file from the commit being deployed.
+name: nitpick
+
+services:
+  app:
+    image: ghcr.io/kewldan/nitpick:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://nitpick.m3105.ru
+      TRUST_PROXY: "1"
+    volumes:
+      - data:/data
+    networks:
+      - virtual-hosts
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.nitpick.rule: Host(`nitpick.m3105.ru`)
+      traefik.http.routers.nitpick.tls: "true"
+      traefik.http.routers.nitpick.tls.certresolver: myresolver
+      traefik.http.services.nitpick.loadbalancer.server.port: "8787"
+
+volumes:
+  data:
+
+networks:
+  virtual-hosts:
+    external: true

@@ -90,8 +90,10 @@ export function createApp({ store, trustProxy = false }: AppOptions) {
 
   const clientIp = (c: Context): string => {
     if (trustProxy) {
+      // The proxy appends the address it saw; earlier entries come from the
+      // client and can be forged, so the last one is the one to trust.
       const fwd = c.req.header('x-forwarded-for');
-      if (fwd) return fwd.split(',')[0].trim();
+      if (fwd) return fwd.split(',').pop()!.trim();
     }
     const env = c.env as
       | { incoming?: { socket?: { remoteAddress?: string } } }
